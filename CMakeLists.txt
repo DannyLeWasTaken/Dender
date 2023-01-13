@@ -1,11 +1,20 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.7)
 project(Dender)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 #includes
 include(FetchContent)
 
 # Required packages
+find_package(Vulkan REQUIRED)
+
+# Add libraries
+FetchContent_Declare(
+        vk-bootstrap
+        GIT_REPOSITORY https://github.com/charles-lunarg/vk-bootstrap
+        GIT_TAG        01de71738cd206eefe2537882888dc741881ec0b
+)
+FetchContent_MakeAvailable(vk-bootstrap)
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -20,17 +29,21 @@ FetchContent_MakeAvailable(glfw)
 FetchContent_Declare(
         glm
         GIT_REPOSITORY https://github.com/g-truc/glm
-        GIT_TAG 0.9.9.8
+        GIT_TAG        0.9.9.8
 )
 FetchContent_MakeAvailable(glm)
 
-FETCHCONTENT_DECLARE(
-        fastgltf
-        GIT_REPOSITORY https://github.com/spnda/fastgltf
-        GIT_TAG v0.2.0
+set(VUK_USE_DXC OFF CACHE BOOL "" FORCE) # Don't use mid
+FetchContent_Declare(
+        vuk
+        GIT_REPOSITORY https://github.com/martty/vuk
+        GIT_TAG        be7cf2cab527df1310bfe39a65d72c524fdd265
 )
-FETCHCONTENT_MAKEAVAILABLE(fastgltf)
+FetchContent_MakeAvailable(vuk)
 
-add_executable(Dender main.cpp)
+# Create executable
+add_executable(Dender src/main.cpp)
 
-target_link_directories(${PROJECT_NAME} PRIVATE glfw glm fastgltf)
+# Link included libraries
+target_link_libraries(${PROJECT_NAME} PRIVATE vuk)
+target_link_libraries(${PROJECT_NAME} PRIVATE vk-bootstrap glfw glm)
