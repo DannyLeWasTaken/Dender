@@ -49,7 +49,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(vuk)
 
 # Create executable
-add_executable(Dender src/main.cpp src/App.cpp src/App.hpp src/Pathtracer.cpp src/Pathtracer.hpp src/utils.hpp)
+add_executable(Dender src/main.cpp src/App.cpp src/App.hpp src/GlfwHelper.hpp src/utils.hpp)
 
 # Link included libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE vuk)
