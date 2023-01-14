@@ -33,22 +33,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
-#[[
-# Does not work on C++20 :(
 FetchContent_Declare(
         fastgltf
         GIT_REPOSITORY https://github.com/spnda/fastgltf
-        GIT_TAG        0.2.0
+        GIT_TAG        4d6664e02ab3c15be151b5ed880b0c5c52e235e4
 )
 FetchContent_MakeAvailable(fastgltf)
-#]]
-
-FetchContent_Declare(
-        tinygltf
-        GIT_REPOSITORY https://github.com/syoyo/tinygltf
-        GIT_TAG        v2.8.1
-)
-FetchContent_MakeAvailable(tinygltf)
 
 set(VUK_USE_DXC OFF CACHE BOOL "" FORCE) # Don't use mid
 FetchContent_Declare(
@@ -59,8 +49,8 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(vuk)
 
 # Create executable
-add_executable(Dender src/main.cpp src/AppWindow.cpp src/AppWindow.hpp)
+add_executable(Dender src/main.cpp src/App.cpp src/App.hpp src/Pathtracer.cpp src/Pathtracer.hpp src/utils.hpp)
 
 # Link included libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE vuk)
-target_link_libraries(${PROJECT_NAME} PRIVATE vk-bootstrap glfw glm tinygltf)
+target_link_libraries(${PROJECT_NAME} PRIVATE vk-bootstrap glfw glm fastgltf)
