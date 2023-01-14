@@ -3,7 +3,7 @@ Dender is a personal ray tracer project of mines.
 It's current goal is to enable me to learn more
 about computer graphics and ray tracing in specific.
 This project was created originally for my
-CS 2022-2023 class.
+CS 2022-2023 class's final project.
 
 ## To-dos
 
