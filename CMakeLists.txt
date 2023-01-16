@@ -1,5 +1,7 @@
-cmake_minimum_required(VERSION 3.7)
-project(Dender)
+cmake_minimum_required(VERSION 3.9)
+project(Dender
+        VERSION 1.0.0
+        DESCRIPTION "Danny's Renderer")
 set(CMAKE_CXX_STANDARD 20)
 
 #includes
@@ -34,11 +36,11 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glm)
 
 FetchContent_Declare(
-        fastgltf
-        GIT_REPOSITORY https://github.com/spnda/fastgltf
-        GIT_TAG        4d6664e02ab3c15be151b5ed880b0c5c52e235e4
+        assimp
+        GIT_REPOSITORY https://github.com/assimp/assimp
+        GIT_TAG        v5.2.5
 )
-FetchContent_MakeAvailable(fastgltf)
+FetchContent_MakeAvailable(assimp)
 
 set(VUK_USE_DXC OFF CACHE BOOL "" FORCE) # Don't use mid
 FetchContent_Declare(
@@ -49,8 +51,15 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(vuk)
 
 # Create executable
-add_executable(Dender src/main.cpp src/App.cpp src/App.hpp src/GlfwHelper.hpp src/utils.hpp)
+
+#add_executable(Dender ${SRC_FILES})
+add_executable(Dender
+        src/main.cpp
+        src/GlfwHelper.hpp
+        src/utils.hpp
+        src/App.cpp src/App.hpp)
+
 
 # Link included libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE vuk)
-target_link_libraries(${PROJECT_NAME} PRIVATE vk-bootstrap glfw glm fastgltf)
+target_link_libraries(${PROJECT_NAME} PRIVATE vk-bootstrap glfw glm assimp)
