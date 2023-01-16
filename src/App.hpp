@@ -37,6 +37,8 @@ public:
     vuk::Unique<std::array<VkSemaphore, 3>> presentReady;
     vuk::Unique<std::array<VkSemaphore, 3>> renderComplete;
 
+    std::vector<vuk::Future> vukFutures;
+
     GLFWwindow*  window;
     VkSurfaceKHR surface;
 
@@ -55,6 +57,8 @@ public:
 private:
     int num_frames = 0;
     double old_time;
+
+    void LoadFromScene(std::string path);
 };
 
 

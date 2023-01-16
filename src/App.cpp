@@ -7,6 +7,8 @@
 #include "utils.hpp"
 #include <vulkan/vulkan.h>
 #include <iostream>
+#include <vuk/Buffer.hpp>
+//#include <glm/glm.hpp>
 
 // Initialization of everything
 App::App() {
@@ -166,6 +168,9 @@ void App::setup() {
 }
 
 void App::loop() {
+    vuk::Compiler compiler;
+    vuk::wait_for_futures_explicit(*vukAllocator, compiler, vukFutures);
+    vukFutures.clear();
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
@@ -191,4 +196,11 @@ void App::render() {
         num_frames = 0;
         glfwSetWindowTitle(window, (APP_TITLE + std::string(" [") + std::to_string(per_frame_time) + " ms / " + std::to_string(1000 / per_frame_time) + " FPS]").c_str() );
     }
+}
+
+void App::LoadFromScene(std::string path)
+{
+    // Load scene
+    //const aiScene* scene = util::loadFromFile(path);
+    // Buffer the vertices
 }
