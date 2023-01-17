@@ -5,6 +5,8 @@
 #include "App.hpp"
 #include "GlfwHelper.hpp"
 #include "utils.hpp"
+#include "Assets/Scene.hpp"
+
 #include <vulkan/vulkan.h>
 #include <iostream>
 #include <vuk/Buffer.hpp>
@@ -161,16 +163,13 @@ void App::setup() {
                               [](GLFWwindow* window, int width, int height) {
 
     });
-
-
-
     this->loop();
 }
 
 void App::loop() {
     vuk::Compiler compiler;
-    vuk::wait_for_futures_explicit(*vukAllocator, compiler, vukFutures);
-    vukFutures.clear();
+    vuk::wait_for_futures_explicit(*vukAllocator, compiler, *vukFutures);
+    vukFutures->clear();
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
@@ -198,9 +197,11 @@ void App::render() {
     }
 }
 
-void App::LoadFromScene(std::string path)
+void App::LoadSceneFromFile(std::string path)
 {
     // Load scene
-    //const aiScene* scene = util::loadFromFile(path);
-    // Buffer the vertices
+    auto scene = new Scene(path);
+    std::cout << "Running - Allocation" << std::endl;
+    scene->Allocate(*vukAllocator, vukFutures);
+    // Add futures
 }

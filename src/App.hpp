@@ -26,18 +26,18 @@ public:
     const std::string APP_TITLE = "Danny's Renderer";
 
     // VARIABLES
-    VkDevice                      device;
-    VkPhysicalDevice              physicalDevice;
-    VkQueue                       graphicsQueue;
-    VkQueue                       transferQueue;
-    std::optional<vuk::Context>   context;
-    std::optional<vuk::DeviceSuperFrameResource> vukDeviceSfResource;
-    std::optional<vuk::Allocator> vukAllocator;
-    vuk::SwapchainRef             swapchain;
-    vuk::Unique<std::array<VkSemaphore, 3>> presentReady;
-    vuk::Unique<std::array<VkSemaphore, 3>> renderComplete;
+    VkDevice                                        device;
+    VkPhysicalDevice                                physicalDevice;
+    VkQueue                                         graphicsQueue;
+    VkQueue                                         transferQueue;
+    std::optional<vuk::Context>                     context;
+    std::optional<vuk::DeviceSuperFrameResource>    vukDeviceSfResource;
+    std::optional<vuk::Allocator>                   vukAllocator;
+    vuk::SwapchainRef                               swapchain;
+    vuk::Unique<std::array<VkSemaphore, 3>>         presentReady;
+    vuk::Unique<std::array<VkSemaphore, 3>>         renderComplete;
 
-    std::vector<vuk::Future> vukFutures;
+    std::vector<vuk::Future> *vukFutures;
 
     GLFWwindow*  window;
     VkSurfaceKHR surface;
@@ -54,11 +54,11 @@ public:
     void loop();
     void render();
 
+    void LoadSceneFromFile(std::string path);
+
 private:
     int num_frames = 0;
     double old_time;
-
-    void LoadFromScene(std::string path);
 };
 
 

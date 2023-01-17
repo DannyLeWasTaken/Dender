@@ -10,6 +10,12 @@
 #include <vuk/Swapchain.hpp>
 #include <VkBootstrap.h>
 
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+
+#include <iostream>
+
 namespace util
 {
     inline vuk::Swapchain make_swapchain(const vkb::Device& vkbdevice, std::optional<VkSwapchainKHR> old_swapchain) {

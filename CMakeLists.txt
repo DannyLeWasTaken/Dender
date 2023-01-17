@@ -35,6 +35,8 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_NO_EXPORT OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
         assimp
         GIT_REPOSITORY https://github.com/assimp/assimp
@@ -43,6 +45,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(assimp)
 
 set(VUK_USE_DXC OFF CACHE BOOL "" FORCE) # Don't use mid
+set(VUK_FAIL_FAST ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
         vuk
         GIT_REPOSITORY https://github.com/martty/vuk
@@ -50,14 +53,30 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(vuk)
 
+include_directories(libs)
+link_directories(libs)
+
+# Compiler options
+if (MSVC)
+    #add_compile_options(/W4)
+else()
+    #add_compile_options("-Wall" "-Wextra" "-pedantic")
+    add_compile_options("-g")
+endif()
+
+
 # Create executable
 
 #add_executable(Dender ${SRC_FILES})
 add_executable(Dender
         src/main.cpp
+        src/stb_image.cc
         src/GlfwHelper.hpp
         src/utils.hpp
-        src/App.cpp src/App.hpp)
+        src/App.cpp src/App.hpp
+        src/Assets/Scene.cpp src/Assets/Scene.hpp
+        src/Assets/Mesh.cpp src/Assets/Mesh.hpp
+        )
 
 
 # Link included libraries

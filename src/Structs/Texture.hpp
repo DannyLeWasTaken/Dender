@@ -11,7 +11,7 @@
 #include <optional>
 
 struct Texture {
-    vuk::Texture vukTexture;
+    std::optional<vuk::Texture> vukTexture;
     std::string Type;
     std::string Path;
     int Id;
