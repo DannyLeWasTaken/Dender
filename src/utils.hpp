@@ -15,6 +15,8 @@
 #include <assimp/postprocess.h>
 
 #include <iostream>
+#include <sstream>
+#include <fstream>
 
 namespace util
 {
@@ -46,6 +48,15 @@ namespace util
 		sw.swapchain = vkswapchain->swapchain;
 		return sw;
 	}
+
+    inline std::string read_entire_file(std::string path, std::string name)
+    {
+        std::ostringstream buf;
+        std::ifstream input(path.c_str());
+        assert(input);
+        buf << input.rdbuf();
+        return buf.str();
+    }
 }
 
 #endif //DENDER_UTILS_HPP
