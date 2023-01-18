@@ -7,75 +7,52 @@
 #include <stb_image.h>
 #include <iostream>
 #include <assimp/Importer.hpp>
+#include <utility>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
 #include "Scene.hpp"
 
 Scene::Scene(std::string &path): pathString(path) {
-    Assimp::Importer importer;
-
     // read file via assimp. Force triangles only and flipped uvs
     assimpScene = importer.ReadFile(path.c_str(),
                                     aiProcess_Triangulate |
+                                    aiProcess_GenNormals |
                                     aiProcess_FlipUVs);
     if (!assimpScene || assimpScene->mFlags & AI_SCENE_FLAGS_INCOMPLETE
     || !assimpScene->mRootNode || !assimpScene->HasMaterials())
         std::cerr << "[ERROR::ASSIMP::" << path << "]: "
         << importer.GetErrorString() << std::endl;
 
-    // Iterate over all meshes
-    processNode(assimpScene->mRootNode, assimpScene);
-
     directory = path.substr(0, path.find_last_of('/'));
     std::cout << "LOADING SCENE: " << path.c_str() << std::endl;
 }
 
-void Scene::Allocate(vuk::Allocator allocator, std::vector<vuk::Future> *futures) {
-    // Load all textures
-    for (auto mesh: assimpMeshes)
-    {
-        Meshes.push_back(this->processMesh(mesh, assimpScene, allocator));
-    }
-}
-
-void Scene::processNode(aiNode *node, const aiScene *scene) {
+void Scene::processNode(aiNode *node, const aiScene *scene, vuk::Allocator allocator, std::shared_ptr<std::vector<vuk::Future>> futures) {
     for (unsigned int i = 0; i < node->mNumMeshes; i++)
     {
+        std::cout << "Storing mesh " << i << std::endl;
         aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-        if (mesh != nullptr)
-            assimpMeshes.push_back(mesh);
+        Meshes.push_back(processMesh(mesh, scene, allocator));
     }
 
     for (unsigned int i = 0; i < node->mNumChildren; i++) {
-        processNode(node->mChildren[i], scene);
+        processNode(node->mChildren[i], scene, allocator, futures);
     }
 }
 
-Mesh* Scene::processMesh(aiMesh *mesh, const aiScene *scene, vuk::Allocator allocator) {
+void Scene::AllocateMeshes(vuk::Allocator allocator, std::shared_ptr<std::vector<vuk::Future>> futures) {
+    processNode(assimpScene->mRootNode, assimpScene, allocator, std::move(futures));
+    for (auto& mesh: Meshes)
+    {
+        mesh->Allocate(allocator);
+    }
+}
+
+Mesh* Scene::processMesh(aiMesh* mesh, const aiScene *scene, vuk::Allocator allocator) {
     std::vector<Vertex> vertices;
     std::vector<unsigned int> indices;
-    std::vector<Texture> textures;
-    std::cout << "Processing mesh" << std::endl;
-    // Import all textures
-    if (mesh->mTextureCoords != nullptr && mesh->mTextureCoords[0]) {
-        std::cout << "Mesh-iter 0.9" << std::endl;
-        aiTextureType textureTypes[] = {
-                aiTextureType_BASE_COLOR,
-                aiTextureType_EMISSIVE,
-                aiTextureType_EMISSION_COLOR
-        };
-        std::cout << "Mesh-iter 1" << std::endl;
-        for (auto &j: textureTypes) {
-            std::cout << "Mesh-iter 1.1 | " << "Type: " << std::to_string(j) <<
-                      " | Mesh Index: " << mesh->mMaterialIndex <<
-                      " | numMaterial: " << assimpScene->mNumMaterials << std::endl;
-            aiMaterial *material = assimpScene->mMaterials[mesh->mMaterialIndex];
-            std::vector<Texture> texs = this->loadMaterialTextures(allocator, material, j);
-            std::cout << "Mesh-iter 1.2" << std::endl;
-        }
-    }
-    std::cout << "Mesh-iter 2" << std::endl;
+    std::vector<std::unique_ptr<Texture>> textures;
     // Process all vertices
     for (unsigned int i = 0; i < mesh->mNumVertices; i++)
     {
@@ -90,7 +67,6 @@ Mesh* Scene::processMesh(aiMesh *mesh, const aiScene *scene, vuk::Allocator allo
 
         vertices.push_back(vert);
     }
-    std::cout << "Mesh-iter 3" << std::endl;
     // Process all indices
     for (unsigned int i = 0; i < mesh->mNumFaces; i++)
     {
@@ -98,33 +74,38 @@ Mesh* Scene::processMesh(aiMesh *mesh, const aiScene *scene, vuk::Allocator allo
         for (unsigned int j = 0; j < face.mNumIndices; j++)
             indices.push_back(face.mIndices[j]);
     }
-    std::cout << "Mesh-iter 3" << std::endl;
+
+    // Import all textures
+    aiTextureType textureTypes[] = {
+            aiTextureType_BASE_COLOR,
+            aiTextureType_EMISSIVE,
+            aiTextureType_EMISSION_COLOR
+    };
+    for (auto &j: textureTypes) {
+        aiMaterial *material = assimpScene->mMaterials[mesh->mMaterialIndex];
+        std::vector<std::unique_ptr<Texture>> texs = this->loadMaterialTextures(allocator, material, j);
+        textures.insert(textures.end(),
+                        std::make_move_iterator(texs.begin()),
+                        std::make_move_iterator(texs.end()));
+    }
+
     Mesh* m = new Mesh(vertices, indices, std::move(textures));
     m->Allocate(allocator);
     return m;
 }
 
-std::vector<Texture> Scene::loadMaterialTextures(vuk::Allocator allocator, aiMaterial* material, aiTextureType type) {
-    std::vector<Texture> textures;
-    std::string fileName = pathString;
-    fileName = directory + '/' + fileName;
-    std::cout << "LMT 0.4 | " << std::to_string(type) << std::endl;
-    auto a = aiGetMaterialTextureCount(material, type);
-    auto maxAmount = material->GetTextureCount(type);
-    std::cout << "LMT 0.5 | " << maxAmount << std::endl;
-    for (unsigned int i = 0; i < maxAmount; i++)
+std::vector<std::unique_ptr<Texture>> Scene::loadMaterialTextures(vuk::Allocator allocator, aiMaterial* material, aiTextureType type) {
+    std::vector<std::unique_ptr<Texture>> textures;
+    for (unsigned int i = 0; i < material->GetTextureCount(type); i++)
     {
         aiString str;
-        std::cout << "LMT 0.9 | " << std::to_string(type) << " | " << i << std::endl;
-
+        std::cout << "Processing texture " << i << " | Type: " << std::to_string(type) << std::endl;
         material->GetTexture(type, i, &str);
         bool skip = false;
-        std::cout << "LMT 1 | " << str.C_Str() << std::endl;
-        std::cout << "LMT 1.1 | " << fileName << std::endl;
         for (auto & loadedTexture : loadedTextures)
         {
             if (std::strcmp(
-                    loadedTexture.Path.data(),
+                    loadedTexture->Path.data(),
                     str.C_Str()
                     ) == 0)
             {
@@ -134,12 +115,16 @@ std::vector<Texture> Scene::loadMaterialTextures(vuk::Allocator allocator, aiMat
         }
         if (skip)
             continue;
-        std::cout << "LMT 2" << std::endl;
-        Texture texture;
-        texture.Id = (int)i;
-        texture.Path = str.C_Str();
-        texture.Type = std::to_string(type);
-        std::cout << "LMT 3" << std::endl;
+        std::unique_ptr<Texture> texture = std::make_unique<Texture>();
+        texture->Id = (int)i;
+        texture->Path = str.C_Str();
+        texture->Type = std::to_string(type);
+
+        // Generate path
+        std::string fileName = std::string(str.C_Str());
+        fileName = directory + "/" + fileName;
+
+        std::cout << "Loading texture at path: " << fileName << std::endl;
 
         // Load texture from path
         int width, height, nrComponents;
@@ -148,11 +133,12 @@ std::vector<Texture> Scene::loadMaterialTextures(vuk::Allocator allocator, aiMat
                                         &width,
                                         &height,
                                         &nrComponents,
-                                        0);
-        std::cout << "LMT 4 | " << str.C_Str() << std::endl;
+                                        4);
 
-        if (!data)
-            std::cerr << "Failed to load texture at path: " << str.C_Str() << std::endl;
+        if (!data) {
+            std::cerr << "Failed to load texture at path: " << fileName.c_str() << std::endl;
+            continue;
+        }
 
         vuk::Format format;
         switch (nrComponents)
@@ -167,20 +153,29 @@ std::vector<Texture> Scene::loadMaterialTextures(vuk::Allocator allocator, aiMat
                 format = vuk::Format::eR8G8B8Srgb;
                 break;
             case 4:
-                format = vuk::Format::eR8G8B8Srgb;
+                format = vuk::Format::eR8G8B8A8Srgb;
+                break;
+            default:
+                format = vuk::Format::eUndefined;
                 break;
         };
-        std::cout << "LMT 5" << std::endl;
+        if (format == vuk::Format::eUndefined) {
+            std::cerr << fileName.c_str() << " has an invalid texture type." << std::endl;
+            continue;
+        }
 
         auto [tex, texFuture] = vuk::create_texture(allocator,
-                                                 format,
-                                                 vuk::Extent3D{ (unsigned)width, (unsigned)height, 1u },
+                                                 vuk::Format::eR8G8B8A8Srgb,
+                                                 vuk::Extent3D{ (unsigned)width, (unsigned)height,  1u},
                                                  data,
-                                                 true);
-        std::cout << "LMT 6" << std::endl;
-        texture.vukTexture = std::move(tex);
+                                                 false);
+        texture->vukTexture = std::move(tex);
         textures.push_back(std::move(texture));
-        std::cout << "LMT 7" << std::endl;
+        stbi_image_free(data);
     }
     return textures;
+}
+
+Scene::~Scene() {
+    importer.FreeScene();
 }

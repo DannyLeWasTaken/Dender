@@ -4,8 +4,12 @@
 
 #include "Mesh.hpp"
 
-Mesh::Mesh(std::vector<Vertex> verts, std::vector<unsigned int> inds, std::vector<Texture> texs):
-    Vertices(verts), Indices(inds), Textures(std::move(texs)) {};
+#include <utility>
+
+Mesh::Mesh(std::vector<Vertex> verts,
+           std::vector<unsigned int> inds,
+           std::vector<std::unique_ptr<Texture>> texs):
+    Vertices(std::move(verts)), Indices(std::move(inds)), Textures(std::move(texs)) {};
 
 /*
  * @brief Allocates the mesh onto memory, but textures which is handled by the scene

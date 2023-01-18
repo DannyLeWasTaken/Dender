@@ -134,18 +134,39 @@ App::App() {
 
     vukAllocator->allocate_semaphores(*presentReady);
     vukAllocator->allocate_semaphores(*renderComplete);
+
+    vukFutures = std::make_shared<std::vector<vuk::Future>>();
 }
 
 // Destruction of all
 App::~App() {
+    for (auto& scene: Scenes)
+    {
+        for (auto& mesh: scene->Meshes)
+        {
+            for (auto& texture: mesh->Textures)
+            {
+                std::cout << "Freed texture" << std::endl;
+                texture.reset();
+            }
+        }
+    }
+    std::cout << "Freed all textures" << std::endl;
     presentReady.reset();
+    std::cout << "1" << std::endl;
     renderComplete.reset();
+    std::cout << "2" << std::endl;
     vukDeviceSfResource.reset();
+    std::cout << "3" << std::endl;
     context.reset();
+    std::cout << "4" << std::endl;
     vkDestroySurfaceKHR(vkbInstance.instance, surface, nullptr);
+    std::cout << "5" << std::endl;
     GlfwHelper::destroy_window_glfw(window);
     vkb::destroy_device(vkbDevice);
+    std::cout << "6" << std::endl;
     vkb::destroy_instance(vkbInstance);
+    std::cout << "Destroyed successfully" << std::endl;
 }
 
 void App::onResize(GLFWwindow *window, int width, int height) {
@@ -173,19 +194,29 @@ void App::loop() {
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
-        this->render();
+        this->render(compiler);
     }
     // Process is done, break
     this->cleanup();
     delete this;
 }
 
-void App::render() {
+vuk::SingleSwapchainRenderBundle bundle;
+
+void App::render(vuk::Compiler& compiler) {
     auto& vukDeviceFrameResource = vukDeviceSfResource->get_next_frame();
     context->next_frame();
     vuk::Allocator frameAllocator(vukDeviceFrameResource);
+    bundle = *vuk::acquire_one(*context, swapchain, (*presentReady)[context->get_frame_count() % 3],
+                               (*renderComplete)[context->get_frame_count() % 3]);
     vuk::RenderGraph rg("RayTraceGraph");
-
+    rg.attach_swapchain("_swp", swapchain);
+    rg.clear_image("_swp", "clearImage", vuk::ClearColor{0.3f, 0.5f, 0.3f, 1.0f});
+    auto fut = vuk::Future{std::make_unique<vuk::RenderGraph>(std::move(rg)), "Danny's Renderer"};
+    auto ptr = fut.get_render_graph();
+    auto erg = *compiler.link(std::span{&ptr, 1}, {});
+    auto result = *vuk::execute_submit(frameAllocator, std::move(erg), std::move(bundle));
+    vuk::present_to_one(*context, std::move(result));
     if (++num_frames == 16)
     {
         auto new_time = glfwGetTime();
@@ -202,6 +233,7 @@ void App::LoadSceneFromFile(std::string path)
     // Load scene
     auto scene = new Scene(path);
     std::cout << "Running - Allocation" << std::endl;
-    scene->Allocate(*vukAllocator, vukFutures);
+    scene->AllocateMeshes(*vukAllocator, vukFutures);
+    Scenes.push_back(scene);
     // Add futures
 }

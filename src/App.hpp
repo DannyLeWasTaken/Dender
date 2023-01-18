@@ -19,6 +19,8 @@
 #include "vuk/SampledImage.hpp"
 #include "vuk/resources/DeviceFrameResource.hpp"
 
+class Scene;
+
 class App {
 public:
 
@@ -37,13 +39,16 @@ public:
     vuk::Unique<std::array<VkSemaphore, 3>>         presentReady;
     vuk::Unique<std::array<VkSemaphore, 3>>         renderComplete;
 
-    std::vector<vuk::Future> *vukFutures;
+
+    std::shared_ptr<std::vector<vuk::Future>> vukFutures;
 
     GLFWwindow*  window;
     VkSurfaceKHR surface;
 
     vkb::Instance vkbInstance;
     vkb::Device   vkbDevice;
+
+    std::vector<Scene*> Scenes;
 
     // FUNCTIONS
     App();
@@ -52,7 +57,7 @@ public:
     void cleanup();
     void onResize(GLFWwindow* window, int width, int height);
     void loop();
-    void render();
+    void render(vuk::Compiler& compiler);
 
     void LoadSceneFromFile(std::string path);
 

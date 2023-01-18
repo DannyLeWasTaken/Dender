@@ -19,19 +19,22 @@
 class Scene {
 public:
     Scene(std::string& path);
-    void Allocate(vuk::Allocator allocator, std::vector<vuk::Future>* futures);
+    void AllocateMeshes(vuk::Allocator allocator, std::shared_ptr<std::vector<vuk::Future>> futures);
     std::vector<Mesh*> Meshes;
+
+    ~Scene();
 private:
     const aiScene* assimpScene;
-    std::vector<aiMesh*> assimpMeshes;
-    std::vector<Texture> loadedTextures;
-    std::vector<Texture> loadMaterialTextures(vuk::Allocator allocator,
+    std::vector<aiMesh> assimpMeshes;
+    std::vector<std::unique_ptr<Texture>> loadedTextures;
+    std::vector<std::unique_ptr<Texture>> loadMaterialTextures(vuk::Allocator allocator,
                                               aiMaterial* material,
                                               aiTextureType type);
-    void processNode(aiNode* node, const aiScene* scene);
+    void processNode(aiNode* node, const aiScene* scene, vuk::Allocator allocator, std::shared_ptr<std::vector<vuk::Future>> futures);
     Mesh* processMesh(aiMesh* mesh, const aiScene* scene, vuk::Allocator allocator);
     std::string directory;
     std::string pathString;
+    Assimp::Importer importer;
 };
 
 

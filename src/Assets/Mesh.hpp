@@ -19,11 +19,11 @@ class Mesh {
 public:
     Mesh(std::vector<Vertex> verts,
          std::vector<unsigned int> inds,
-         std::vector<Texture> texs);
+         std::vector<std::unique_ptr<Texture>> texs);
 
     std::vector<Vertex> Vertices;
     std::vector<unsigned int> Indices;
-    std::vector<Texture> Textures;
+    std::vector<std::unique_ptr<Texture>> Textures;
 
     vuk::Buffer VertexBuffer;
     vuk::Buffer IndexBuffer;

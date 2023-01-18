@@ -4,6 +4,14 @@ project(Dender
         DESCRIPTION "Danny's Renderer")
 set(CMAKE_CXX_STANDARD 20)
 
+# 64-bit check
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message("Please switch to x64 build.")
+    return()
+else()
+    message("64x build")
+endif()
+
 #includes
 include(FetchContent)
 
@@ -35,7 +43,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
-set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+#set(ASSIMP_BUILD_TESTS ON CACHE BOOL "" FORCE)
 set(ASSIMP_NO_EXPORT OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
         assimp
@@ -59,9 +67,10 @@ link_directories(libs)
 # Compiler options
 if (MSVC)
     #add_compile_options(/W4)
+    message("[WARNING]: AVOID USING MSVC.")
 else()
     #add_compile_options("-Wall" "-Wextra" "-pedantic")
-    add_compile_options("-g")
+    add_compile_options("-m64" "-g")
 endif()
 
 
@@ -76,6 +85,7 @@ add_executable(Dender
         src/App.cpp src/App.hpp
         src/Assets/Scene.cpp src/Assets/Scene.hpp
         src/Assets/Mesh.cpp src/Assets/Mesh.hpp
+        src/Structs/Texture.hpp src/Structs/Vertex.hpp
         )
 
 
