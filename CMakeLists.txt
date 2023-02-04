@@ -19,6 +19,16 @@ include(FetchContent)
 find_package(Vulkan REQUIRED)
 
 # Add libraries
+
+set(VUK_USE_DXC OFF CACHE BOOL "" FORCE) # Don't use mid
+set(VUK_FAIL_FAST ON CACHE BOOL "" FORCE)
+FetchContent_Declare(
+        vuk
+        GIT_REPOSITORY https://github.com/martty/vuk
+        GIT_TAG        be7cf2cab527df1310bfe39a65d72c524fdd265
+)
+FetchContent_MakeAvailable(vuk)
+
 FetchContent_Declare(
         vk-bootstrap
         GIT_REPOSITORY https://github.com/charles-lunarg/vk-bootstrap
@@ -45,6 +55,9 @@ FetchContent_MakeAvailable(glm)
 
 #set(ASSIMP_BUILD_TESTS ON CACHE BOOL "" FORCE)
 set(ASSIMP_NO_EXPORT OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
         assimp
         GIT_REPOSITORY https://github.com/assimp/assimp
@@ -52,25 +65,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(assimp)
 
-set(VUK_USE_DXC OFF CACHE BOOL "" FORCE) # Don't use mid
-set(VUK_FAIL_FAST ON CACHE BOOL "" FORCE)
-FetchContent_Declare(
-        vuk
-        GIT_REPOSITORY https://github.com/martty/vuk
-        GIT_TAG        be7cf2cab527df1310bfe39a65d72c524fdd265
-)
-FetchContent_MakeAvailable(vuk)
-
-include_directories(libs)
-link_directories(libs)
-
 # Compiler options
 if (MSVC)
     #add_compile_options(/W4)
     message("[WARNING]: AVOID USING MSVC.")
 else()
     #add_compile_options("-Wall" "-Wextra" "-pedantic")
-    add_compile_options("-m64" "-g")
+    #add_compile_options("-m64" "-g")
 endif()
 
 
