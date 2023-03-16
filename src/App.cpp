@@ -5,15 +5,22 @@
 #include "App.hpp"
 #include "GlfwHelper.hpp"
 #include "utils.hpp"
-#include "Assets/Scene.hpp"
 
 #include <vulkan/vulkan.h>
 #include <iostream>
 #include <vuk/Buffer.hpp>
+#include <vuk/Future.hpp>
+#include "Renderer.hpp"
+#include "RaytracingBuilder.hpp"
+#include "Assets/GltfScene.hpp"
 //#include <glm/glm.hpp>
+#include <glm/gtx/transform.hpp>
+#include <glm/gtx/euler_angles.hpp>
 
 // Initialization of everything
 App::App() {
+    std::cout << "Start app!" << std::endl;
+
     vkb::InstanceBuilder builder;
     builder.request_validation_layers(true)
     .set_debug_callback([](VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -35,6 +42,8 @@ App::App() {
         throw std::runtime_error("Couldn't initialize instance");
     }
 
+    std::cout << "1" << std::endl;
+
     vkbInstance = inst_ret.value();
     vkb::PhysicalDeviceSelector selector { vkbInstance };
     window = GlfwHelper::create_window_glfw(APP_TITLE.c_str(), true);
@@ -42,23 +51,24 @@ App::App() {
     surface = GlfwHelper::create_surface_glfw(vkbInstance.instance, window);
     selector.set_surface(surface)
     .set_minimum_version(1, 0)
-    .add_required_extension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)
-    .add_required_extension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME)
-    .add_required_extension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME)
-    .add_required_extension(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+    .add_required_extension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+
+    std::cout << "2" << std::endl;
 
     auto phys_ret = selector.select();
     vkb::PhysicalDevice vkbPhysicalDevice;
     if (!phys_ret) {
-        throw std::runtime_error("Device does not support one or more of the following extensions:\n"
+        std::cout << "Device does not support one or more of the following extensions:\n"
                                  " - VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME\n"
                                  " - VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME\n"
                                  " - VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME\n"
                                  " - VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME\n"
-                                 "Common cause: Non-hardware accelerated ray tracing GPU");
+                                 "Common cause: Non-hardware accelerated ray tracing GPU" << std::endl;
     }
     vkbPhysicalDevice = phys_ret.value();
     physicalDevice = vkbPhysicalDevice.physical_device;
+
+    std::cout << "2.5" << std::endl;
 
     vkb::DeviceBuilder deviceBuilder { vkbPhysicalDevice };
     VkPhysicalDeviceVulkan12Features vk12features{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
@@ -71,6 +81,8 @@ App::App() {
     vk12features.hostQueryReset = true;
     vk12features.bufferDeviceAddress = true;
     vk12features.shaderOutputLayer = true;
+    vk12features.bufferDeviceAddress = true;
+    vk12features.bufferDeviceAddressCaptureReplay = true;
     VkPhysicalDeviceVulkan11Features vk11features{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
     vk11features.shaderDrawParameters = true;
     VkPhysicalDeviceFeatures2 vk10features{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR };
@@ -78,20 +90,20 @@ App::App() {
     VkPhysicalDeviceSynchronization2FeaturesKHR sync_feat{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
                                                            .synchronization2 = true };
     VkPhysicalDeviceAccelerationStructureFeaturesKHR accelFeature{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
-                                                                   .accelerationStructure = true };
+                                                                   .accelerationStructure = false };
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeature{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
-                                                                     .rayTracingPipeline = true };
+                                                                     .rayTracingPipeline = false };
     deviceBuilder = deviceBuilder.
             add_pNext(&vk12features)
             .add_pNext(&vk11features)
             .add_pNext(&sync_feat)
-            .add_pNext(&accelFeature)
-            .add_pNext(&vk10features)
-            .add_pNext(&rtPipelineFeature);
+            .add_pNext(&vk10features);
 
     auto dev_ret = deviceBuilder.build();
-    if (!dev_ret)
-        throw std::runtime_error("Couldn't create device");
+    if (!dev_ret) {
+        std::cerr << "Couldn't create device" << std::endl;
+        //throw std::runtime_error("Couldn't create device");
+    }
 
     vkbDevice = dev_ret.value();
     graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
@@ -100,18 +112,20 @@ App::App() {
     auto transfer_queue_family_index = vkbDevice.get_queue_index(vkb::QueueType::transfer).value();
     device = vkbDevice.device;
 
+    std::cout << "3" << std::endl;
+
     vuk::ContextCreateParameters::FunctionPointers fps;
 #define VUK_EX_LOAD_FP(name) fps.name = (PFN_##name)vkGetDeviceProcAddr(device, #name);
     VUK_EX_LOAD_FP(vkSetDebugUtilsObjectNameEXT);
     VUK_EX_LOAD_FP(vkCmdBeginDebugUtilsLabelEXT);
     VUK_EX_LOAD_FP(vkCmdEndDebugUtilsLabelEXT);
-    VUK_EX_LOAD_FP(vkCmdBuildAccelerationStructuresKHR);
-    VUK_EX_LOAD_FP(vkGetAccelerationStructureBuildSizesKHR);
-    VUK_EX_LOAD_FP(vkCmdTraceRaysKHR);
-    VUK_EX_LOAD_FP(vkCreateAccelerationStructureKHR);
-    VUK_EX_LOAD_FP(vkDestroyAccelerationStructureKHR);
-    VUK_EX_LOAD_FP(vkGetRayTracingShaderGroupHandlesKHR);
-    VUK_EX_LOAD_FP(vkCreateRayTracingPipelinesKHR);
+    //VUK_EX_LOAD_FP(vkCmdBuildAccelerationStructuresKHR);
+    //VUK_EX_LOAD_FP(vkGetAccelerationStructureBuildSizesKHR);
+    //VUK_EX_LOAD_FP(vkCmdTraceRaysKHR);
+    //VUK_EX_LOAD_FP(vkCreateAccelerationStructureKHR);
+    //VUK_EX_LOAD_FP(vkDestroyAccelerationStructureKHR);
+    //VUK_EX_LOAD_FP(vkGetRayTracingShaderGroupHandlesKHR);
+    //VUK_EX_LOAD_FP(vkCreateRayTracingPipelinesKHR);
 
     context.emplace(vuk::ContextCreateParameters{
         vkbInstance,
@@ -136,10 +150,13 @@ App::App() {
     vukAllocator->allocate_semaphores(*renderComplete);
 
     vukFutures = std::make_shared<std::vector<vuk::Future>>();
+
+    std::cout << "Built!" << std::endl;
 }
 
 // Destruction of all
 App::~App() {
+    /**
     for (auto& scene: Scenes)
     {
         for (auto& mesh: scene->Meshes)
@@ -147,10 +164,11 @@ App::~App() {
             for (auto& texture: mesh->Textures)
             {
                 std::cout << "Freed texture" << std::endl;
-                texture.reset();
+                //texture.reset();
             }
         }
     }
+    **/
     std::cout << "Freed all textures" << std::endl;
     presentReady.reset();
     std::cout << "1" << std::endl;
@@ -176,15 +194,65 @@ void App::onResize(GLFWwindow *window, int width, int height) {
 // Cleaning process
 void App::cleanup() {
     context->wait_idle();
+    /**
+    for (auto& scene: Scenes)
+    {
+        for (auto& mesh: scene->Meshes)
+        {
+            for (auto& texture: mesh->Textures)
+            {
+                std::cout << "Freed texture" << std::endl;
+                //texture.reset();
+            }
+        }
+    }
+    **/
+    std::cout << "Freed all textures" << std::endl;
+    presentReady.reset();
+    std::cout << "1" << std::endl;
+    renderComplete.reset();
+    std::cout << "2" << std::endl;
+    vukDeviceSfResource.reset();
+    std::cout << "3" << std::endl;
+    for (auto& buffer: this->scene->m_buffers) {
+		if (buffer.get())
+        	buffer.reset();
+    }
+    std::cout << "3.5" << std::endl;
+    context.reset();
+    std::cout << "4" << std::endl;
+    vkDestroySurfaceKHR(vkbInstance.instance, surface, nullptr);
+    std::cout << "5" << std::endl;
+    GlfwHelper::destroy_window_glfw(window);
+    vkb::destroy_device(vkbDevice);
+    std::cout << "6" << std::endl;
+    vkb::destroy_instance(vkbInstance);
+    std::cout << "Destroyed successfully" << std::endl;
 }
 
 // Sets up the app and begins the render loop
 void App::setup() {
     glfwSetWindowSizeCallback(window,
                               [](GLFWwindow* window, int width, int height) {
-
     });
-    this->loop();
+    {
+        vuk::PipelineBaseCreateInfo pci;
+        //pci.add_glsl(util::read_entire_file("../Shaders/rt.rgen"), "rt.rgen");
+        //pci.add_glsl(util::read_entire_file("../Shaders/rt.rmiss"), "rt.rmiss");
+        //pci.add_glsl(util::read_entire_file("C:/Users/Danny/CLionProjects/Dender/src/Shaders/rt.rchit"), "rt.rchit");
+        pci.add_hit_group(vuk::HitGroup{
+            .type = vuk::HitGroupType::eTriangles,
+            .closest_hit = 2
+        });
+        context->create_named_pipeline("Path tracing", pci);
+    }
+
+    // Describe the mesh
+    vuk::PipelineBaseCreateInfo pci;
+    pci.add_glsl(util::read_entire_file("C:/Users/Danny/CLionProjects/Dender/src/Shaders/triangle.vert"), "vert");
+    pci.add_glsl(util::read_entire_file("C:/Users/Danny/CLionProjects/Dender/src/Shaders/triangle.frag"), "frag");
+
+    context->create_named_pipeline("triangle", pci);
 }
 
 void App::loop() {
@@ -198,24 +266,110 @@ void App::loop() {
     }
     // Process is done, break
     this->cleanup();
-    delete this;
+
+    //auto& aaa = vuk::create_buffer(;)
 }
 
 vuk::SingleSwapchainRenderBundle bundle;
 
 void App::render(vuk::Compiler& compiler) {
-    auto& vukDeviceFrameResource = vukDeviceSfResource->get_next_frame();
+    auto& device_frame_resource = vukDeviceSfResource->get_next_frame();
     context->next_frame();
-    vuk::Allocator frameAllocator(vukDeviceFrameResource);
+    vuk::Allocator frame_allocator(device_frame_resource);
     bundle = *vuk::acquire_one(*context, swapchain, (*presentReady)[context->get_frame_count() % 3],
                                (*renderComplete)[context->get_frame_count() % 3]);
-    vuk::RenderGraph rg("RayTraceGraph");
-    rg.attach_swapchain("_swp", swapchain);
-    rg.clear_image("_swp", "clearImage", vuk::ClearColor{0.3f, 0.5f, 0.3f, 1.0f});
-    auto fut = vuk::Future{std::make_unique<vuk::RenderGraph>(std::move(rg)), "Danny's Renderer"};
+
+    /**
+    std::vector<uint64_t> buffer_addresses;
+    buffer_addresses.insert(buffer_addresses.end(), this->scene->m_bda.begin(), this->scene->m_bda.end());
+    auto [bda_buf, bda_fut] = vuk::create_buffer(
+            frame_allocator,
+            vuk::MemoryUsage::eGPUonly,
+            vuk::DomainFlagBits::eTransferOnGraphics,
+            std::span(this->scene->m_bda)
+    );
+    auto ubo_buf = *bda_buf;
+    **/
+
+    // This struct will represent the view-projection transform used for the cube
+    struct VP {
+        glm::mat4 view;
+        glm::mat4 proj;
+    } vp;
+    // Fill the view matrix, looking a bit from top to the center
+    vp.view = glm::lookAt(glm::vec3(0, 1.5, 3.5), glm::vec3(0), glm::vec3(0, 1, 0));
+    // Fill the projection matrix, standard perspective matrix
+    vp.proj = glm::perspective(glm::degrees(70.f), 1.f, 1.f, 100.f);
+    vp.proj[1][1] *= -1;
+    // Allocate and transfer view-projection transform
+    auto [buboVP, uboVP_fut] = create_buffer(frame_allocator, vuk::MemoryUsage::eCPUtoGPU, vuk::DomainFlagBits::eTransferOnGraphics, std::span(&vp, 1));
+    // since this memory is CPU visible (MemoryUsage::eCPUtoGPU), we don't need to wait for the future to complete
+    auto uboVP = *buboVP;
+
+    auto rendererName = vuk::Name("01_triangle");
+
+    vuk::RenderGraph renderGraph("runner");
+    renderGraph.attach_swapchain("_swp", swapchain);
+    renderGraph.clear_image("_swp", rendererName, vuk::ClearColor{0.3f, 0.5f, 0.3f, 1.0f});
+
+    vuk::RenderGraph rg("01");
+    /*
+    rg.add_pass({
+        .resources = {"01_triangle"_image >> vuk::eColorWrite >> "01_triangle_final"},
+        .execute = [](vuk::CommandBuffer& commandBuffer) {
+            commandBuffer.set_viewport(0, vuk::Rect2D::framebuffer());
+            commandBuffer.set_scissor(0, vuk::Rect2D::framebuffer());
+            commandBuffer
+                .set_rasterization({})
+                .set_color_blend("01_triangle", {})
+                .bind_graphics_pipeline("triangle")
+                .draw(3, 1, 0, 0);
+        }
+    });
+    */
+
+    rg.attach_in("01_triangle",
+                 std::move(vuk::Future{ std::make_shared<vuk::RenderGraph>(std::move(renderGraph)),
+                                        rendererName}));
+
+    auto& gltfScene = this->scene;
+    rg.add_pass({
+       .resources = {
+               "01_triangle"_image >> vuk::eColorWrite >> "01_triangle_final"
+       },
+       .execute = [uboVP, gltfScene](vuk::CommandBuffer& command_buffer) {
+
+           command_buffer.set_viewport(0, vuk::Rect2D::framebuffer())
+           .set_scissor(0, vuk::Rect2D::framebuffer())
+           .set_rasterization({})
+           .set_color_blend("01_triangle", {})
+           .bind_buffer(0, 0, uboVP);
+           glm::mat4* model = command_buffer.map_scratch_buffer<glm::mat4>(0, 1);
+           *model = static_cast<glm::mat4>(glm::angleAxis(glm::radians(360.f), glm::vec3(0.f, 1.f, 0.f)));
+
+
+           for (int i = 0; i < gltfScene->m_mesh.size(); i++) {
+               auto& mesh = gltfScene->m_mesh[i];
+               command_buffer.bind_vertex_buffer(
+                       0,
+                       **mesh.vertex_buffer,
+                       std::span(mesh.vertex_attributes),
+                       mesh.stride
+               )
+               .bind_index_buffer(
+                       **mesh.index_buffer,
+                       mesh.index_buffer_type
+               )
+               .bind_graphics_pipeline("triangle");
+               command_buffer.draw_indexed(mesh.m_indices_count, 1, mesh.m_first_index, 0, i);
+           }
+       }
+    });
+
+    auto fut = vuk::Future{std::make_unique<vuk::RenderGraph>(std::move(rg)), "01_triangle_final"};
     auto ptr = fut.get_render_graph();
     auto erg = *compiler.link(std::span{&ptr, 1}, {});
-    auto result = *vuk::execute_submit(frameAllocator, std::move(erg), std::move(bundle));
+    auto result = *vuk::execute_submit(frame_allocator, std::move(erg), std::move(bundle));
     vuk::present_to_one(*context, std::move(result));
     if (++num_frames == 16)
     {
@@ -228,12 +382,87 @@ void App::render(vuk::Compiler& compiler) {
     }
 }
 
+void App::PrimitiveToGeometryVk(const Primitive *prim) {
+    /**
+    auto vertexAddress = m_VertexBuffer->device_address;
+    auto indexAddress = m_IndexBuffer->device_address;
+
+    uint32_t maxPrimitiveCount = prim->Indices.size() / 3;
+
+    // Describe buffer as array of VertexObj.
+    VkAccelerationStructureGeometryTrianglesDataKHR triangles{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR};
+    triangles.vertexFormat             = VK_FORMAT_R32G32B32_SFLOAT;  // vec3 vertex position data.
+    triangles.vertexData.deviceAddress = vertexAddress;
+    triangles.vertexStride             = sizeof(glm::vec3);
+    // Describe index data (32-bit unsigned int)
+    triangles.indexType               = VK_INDEX_TYPE_UINT32;
+    triangles.indexData.deviceAddress = indexAddress;
+    // Indicate identity transform by setting transformData to null device pointer.
+    //triangles.transformData = {};
+    triangles.maxVertex = prim->Vertices.size();
+
+    // Identify the above data as containing opaque triangles.
+    VkAccelerationStructureGeometryKHR asGeom{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
+    asGeom.geometryType       = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+    asGeom.flags              = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;  // For AnyHit
+    asGeom.geometry.triangles = triangles;
+
+    VkAccelerationStructureBuildRangeInfoKHR offset;
+    offset.firstVertex     = prim->VertexOffset;
+    offset.primitiveCount  = maxPrimitiveCount;
+    offset.primitiveOffset = prim->FirstIndex * sizeof(uint32_t);
+    offset.transformOffset = 0;
+
+    // Our blas is made from only one geometry, but could be made of many geometries
+    RaytracingBuilder::BlasInput input;
+    input.AsGeometry.emplace_back(asGeom);
+    input.AsBuildRangeInfo.emplace_back(offset);
+    **/
+    //return input;
+}
+
 void App::LoadSceneFromFile(std::string path)
 {
+    /**
     // Load scene
     auto scene = new Scene(path);
     std::cout << "Running - Allocation" << std::endl;
-    scene->AllocateMeshes(*vukAllocator, vukFutures);
     Scenes.push_back(scene);
-    // Add futures
+
+    // Create buffers
+    auto [vert_buf, vert_fut] = vuk::create_buffer(*vukAllocator,
+                       vuk::MemoryUsage::eGPUonly,
+                       vuk::DomainFlagBits::eTransferOnGraphics,
+                       std::span(scene->m_Vertices));
+    m_VertexBuffer = std::move(vert_buf);
+    vukFutures->emplace_back(std::move(vert_fut));
+
+    auto [ind_buf, ind_fut] = vuk::create_buffer(*vukAllocator,
+                                                   vuk::MemoryUsage::eGPUonly,
+                                                   vuk::DomainFlagBits::eTransferOnGraphics,
+                                                   std::span(scene->m_Indices));
+    m_IndexBuffer = std::move(ind_buf);
+    vukFutures->emplace_back(std::move(ind_fut));
+
+
+    auto [nrm_buf, nrm_fut] = vuk::create_buffer(*vukAllocator,
+                                                 vuk::MemoryUsage::eGPUonly,
+                                                 vuk::DomainFlagBits::eTransferOnGraphics,
+               m_buf);
+                                  std::span(scene->m_Normals));
+    m_IndexBuffer = std::move(nr    vukFutures->emplace_back(std::move(nrm_fut));
+
+    auto [uv_buf, uv_fut] = vuk::create_buffer(*vukAllocator,
+                                                 vuk::MemoryUsage::eGPUonly,
+                                                 vuk::DomainFlagBits::eTransferOnGraphics,
+                                                 std::span(scene->m_texCoords));
+    **/
+
+    std::filesystem::path filePath = std::filesystem::path{path};
+    scene = new GltfScene(filePath, vukAllocator.value());
+    //std::vector<vuk::Future> futuresList = scene->allocate(*vukAllocator);
+    this->vukFutures->insert(this->vukFutures->begin(), scene->futures.begin(), scene->futures.end());
+
+    std::vector<Material> materials;
+    //
 }

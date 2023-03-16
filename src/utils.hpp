@@ -10,10 +10,6 @@
 #include <vuk/Swapchain.hpp>
 #include <VkBootstrap.h>
 
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
-
 #include <iostream>
 #include <sstream>
 #include <fstream>
@@ -36,7 +32,9 @@ namespace util
 		auto views = *vkswapchain->get_image_views();
 
 		for (auto& i : images) {
-			sw.images.push_back(i);
+			sw.images.push_back(
+                    vuk::Image{i, nullptr}
+                    );
 		}
 		for (auto& i : views) {
 			sw.image_views.emplace_back();
@@ -49,7 +47,7 @@ namespace util
 		return sw;
 	}
 
-    inline std::string read_entire_file(std::string path, std::string name)
+    inline std::string read_entire_file(const std::string& path)
     {
         std::ostringstream buf;
         std::ifstream input(path.c_str());

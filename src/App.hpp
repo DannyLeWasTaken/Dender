@@ -18,8 +18,10 @@
 #include "vuk/RenderGraph.hpp"
 #include "vuk/SampledImage.hpp"
 #include "vuk/resources/DeviceFrameResource.hpp"
+#include "./Structs/Assets.h"
 
 class Scene;
+class GltfScene;
 
 class App {
 public:
@@ -48,7 +50,7 @@ public:
     vkb::Instance vkbInstance;
     vkb::Device   vkbDevice;
 
-    std::vector<Scene*> Scenes;
+    GltfScene* scene;
 
     // FUNCTIONS
     App();
@@ -57,13 +59,21 @@ public:
     void cleanup();
     void onResize(GLFWwindow* window, int width, int height);
     void loop();
-    void render(vuk::Compiler& compiler);
+    void render(vuk::Compiler& command_buffer);
 
     void LoadSceneFromFile(std::string path);
+
+protected:
+
+    vuk::Unique<vuk::Buffer> m_VertexBuffer;
+    vuk::Unique<vuk::Buffer> m_IndexBuffer;
+    vuk::Unique<vuk::Buffer> m_NormalBuffer;
 
 private:
     int num_frames = 0;
     double old_time;
+
+    void PrimitiveToGeometryVk(const Primitive *mesh);
 };
 
 

@@ -20,13 +20,13 @@ find_package(Vulkan REQUIRED)
 
 # Add libraries
 
-set(VUK_USE_DXC OFF CACHE BOOL "" FORCE) # Don't use mid
-set(VUK_FAIL_FAST ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
         vuk
         GIT_REPOSITORY https://github.com/martty/vuk
-        GIT_TAG        be7cf2cab527df1310bfe39a65d72c524fdd265
+        GIT_TAG        bb9cc83b12179a74a5b6f465a276117d17314ea8
 )
+set(VUK_USE_DXC OFF CACHE BOOL "" FORCE) # Don't use mid
+set(VUK_FAIL_FAST ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(vuk)
 
 FetchContent_Declare(
@@ -36,14 +36,21 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(vk-bootstrap)
 
-set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+        fastgltf
+        GIT_REPOSITORY https://github.com/spnda/fastgltf
+        GIT_TAG        09cb85cae1fbb83c914806f315476c751720dbd0
+)
+FetchContent_MakeAvailable(fastgltf)
+
 FetchContent_Declare(
         glfw
         GIT_REPOSITORY https://github.com/glfw/glfw
         GIT_TAG        3.3.6
 )
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(glfw)
 
 FetchContent_Declare(
@@ -54,16 +61,18 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glm)
 
 #set(ASSIMP_BUILD_TESTS ON CACHE BOOL "" FORCE)
-set(ASSIMP_NO_EXPORT OFF CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-        assimp
-        GIT_REPOSITORY https://github.com/assimp/assimp
-        GIT_TAG        v5.2.5
-)
-FetchContent_MakeAvailable(assimp)
+#FetchContent_Declare(
+#        assimp
+#        GIT_REPOSITORY https://github.com/assimp/assimp
+#        GIT_TAG        v5.2.5
+#)
+#set(ASSIMP_NO_EXPORT OFF CACHE BOOL "" FORCE)
+#set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+#set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+#set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+#set(ASSIMP_BUILD_ZLIB OFF CACHE BOOL "" FORCE)
+#set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+#FetchContent_MakeAvailable(assimp)
 
 # Compiler options
 if (MSVC)
@@ -84,12 +93,12 @@ add_executable(Dender
         src/GlfwHelper.hpp
         src/utils.hpp
         src/App.cpp src/App.hpp
-        src/Assets/Scene.cpp src/Assets/Scene.hpp
-        src/Assets/Mesh.cpp src/Assets/Mesh.hpp
-        src/Structs/Texture.hpp src/Structs/Vertex.hpp
-        )
+        #src/Assets/Scene.cpp src/Assets/Scene.hpp
+        src/RaytracingBuilder.hpp src/RaytracingBuilder.cpp src/Assets/GltfScene.cpp src/Assets/GltfScene.hpp src/Assets/TinyGltfLoader.cpp src/Assets/TinyGltfLoader.hpp src/Assets/TinyGltfLoader.hpp src/Structs/Assets.h src/Assets/fast_gltf_loader.hpp src/Assets/fast_gltf_loader.cpp src/Structs/Assets.hpp src/AccelerationStructure.hpp)
+
 
 
 # Link included libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE vuk)
-target_link_libraries(${PROJECT_NAME} PRIVATE vk-bootstrap glfw glm assimp)
+target_link_libraries(${PROJECT_NAME} PRIVATE fastgltf)
+target_link_libraries(${PROJECT_NAME} PRIVATE vk-bootstrap glfw glm)
