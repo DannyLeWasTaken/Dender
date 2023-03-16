@@ -11,8 +11,6 @@
 #include <vuk/Buffer.hpp>
 #include <vuk/Future.hpp>
 #include "Renderer.hpp"
-#include "RaytracingBuilder.hpp"
-#include "Assets/GltfScene.hpp"
 //#include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 #include <glm/gtx/euler_angles.hpp>
@@ -214,10 +212,7 @@ void App::cleanup() {
     std::cout << "2" << std::endl;
     vukDeviceSfResource.reset();
     std::cout << "3" << std::endl;
-    for (auto& buffer: this->scene->m_buffers) {
-		if (buffer.get())
-        	buffer.reset();
-    }
+	// TODO: clean up scene
     std::cout << "3.5" << std::endl;
     context.reset();
     std::cout << "4" << std::endl;
@@ -332,12 +327,12 @@ void App::render(vuk::Compiler& compiler) {
                  std::move(vuk::Future{ std::make_shared<vuk::RenderGraph>(std::move(renderGraph)),
                                         rendererName}));
 
-    auto& gltfScene = this->scene;
+    auto gltf_scene = this->scene;
     rg.add_pass({
        .resources = {
                "01_triangle"_image >> vuk::eColorWrite >> "01_triangle_final"
        },
-       .execute = [uboVP, gltfScene](vuk::CommandBuffer& command_buffer) {
+       .execute = [uboVP, gltf_scene](vuk::CommandBuffer& command_buffer) {
 
            command_buffer.set_viewport(0, vuk::Rect2D::framebuffer())
            .set_scissor(0, vuk::Rect2D::framebuffer())
@@ -347,21 +342,26 @@ void App::render(vuk::Compiler& compiler) {
            glm::mat4* model = command_buffer.map_scratch_buffer<glm::mat4>(0, 1);
            *model = static_cast<glm::mat4>(glm::angleAxis(glm::radians(360.f), glm::vec3(0.f, 1.f, 0.f)));
 
+           for (int i = 0; i < gltf_scene->meshes.size(); i++) {
+               auto& mesh = gltf_scene->meshes[i];
+			   vuk::VertexInputAttributeDescription vertex_attributes{};
+			   vertex_attributes.format = mesh.positions.format;
+			   vertex_attributes.offset = mesh.positions.offset;
+			   vertex_attributes.binding = 0;
+			   vertex_attributes.location = 0;
 
-           for (int i = 0; i < gltfScene->m_mesh.size(); i++) {
-               auto& mesh = gltfScene->m_mesh[i];
                command_buffer.bind_vertex_buffer(
                        0,
-                       **mesh.vertex_buffer,
-                       std::span(mesh.vertex_attributes),
-                       mesh.stride
+                       **mesh.positions.buffer->vk_buffer,
+						std::span{&vertex_attributes, 1},
+                       mesh.positions.stride
                )
                .bind_index_buffer(
-                       **mesh.index_buffer,
-                       mesh.index_buffer_type
+                       **mesh.indices.buffer->vk_buffer,
+                       mesh.indices.format
                )
                .bind_graphics_pipeline("triangle");
-               command_buffer.draw_indexed(mesh.m_indices_count, 1, mesh.m_first_index, 0, i);
+               command_buffer.draw_indexed(mesh.indices.count, 1, mesh.indices.first_index, 0, i);
            }
        }
     });
@@ -380,45 +380,6 @@ void App::render(vuk::Compiler& compiler) {
         num_frames = 0;
         glfwSetWindowTitle(window, (APP_TITLE + std::string(" [") + std::to_string(per_frame_time) + " ms / " + std::to_string(1000 / per_frame_time) + " FPS]").c_str() );
     }
-}
-
-void App::PrimitiveToGeometryVk(const Primitive *prim) {
-    /**
-    auto vertexAddress = m_VertexBuffer->device_address;
-    auto indexAddress = m_IndexBuffer->device_address;
-
-    uint32_t maxPrimitiveCount = prim->Indices.size() / 3;
-
-    // Describe buffer as array of VertexObj.
-    VkAccelerationStructureGeometryTrianglesDataKHR triangles{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR};
-    triangles.vertexFormat             = VK_FORMAT_R32G32B32_SFLOAT;  // vec3 vertex position data.
-    triangles.vertexData.deviceAddress = vertexAddress;
-    triangles.vertexStride             = sizeof(glm::vec3);
-    // Describe index data (32-bit unsigned int)
-    triangles.indexType               = VK_INDEX_TYPE_UINT32;
-    triangles.indexData.deviceAddress = indexAddress;
-    // Indicate identity transform by setting transformData to null device pointer.
-    //triangles.transformData = {};
-    triangles.maxVertex = prim->Vertices.size();
-
-    // Identify the above data as containing opaque triangles.
-    VkAccelerationStructureGeometryKHR asGeom{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
-    asGeom.geometryType       = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-    asGeom.flags              = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;  // For AnyHit
-    asGeom.geometry.triangles = triangles;
-
-    VkAccelerationStructureBuildRangeInfoKHR offset;
-    offset.firstVertex     = prim->VertexOffset;
-    offset.primitiveCount  = maxPrimitiveCount;
-    offset.primitiveOffset = prim->FirstIndex * sizeof(uint32_t);
-    offset.transformOffset = 0;
-
-    // Our blas is made from only one geometry, but could be made of many geometries
-    RaytracingBuilder::BlasInput input;
-    input.AsGeometry.emplace_back(asGeom);
-    input.AsBuildRangeInfo.emplace_back(offset);
-    **/
-    //return input;
 }
 
 void App::LoadSceneFromFile(std::string path)
@@ -459,10 +420,10 @@ void App::LoadSceneFromFile(std::string path)
     **/
 
     std::filesystem::path filePath = std::filesystem::path{path};
-    scene = new GltfScene(filePath, vukAllocator.value());
-    //std::vector<vuk::Future> futuresList = scene->allocate(*vukAllocator);
-    this->vukFutures->insert(this->vukFutures->begin(), scene->futures.begin(), scene->futures.end());
-
-    std::vector<Material> materials;
-    //
+    this->scene = this->gltf_loader.load_file(filePath, *this->vukAllocator);
+	std::vector<vuk::Future> futures;
+	for (auto& buffer: this->scene->buffers) {
+		futures.emplace_back(buffer->future);
+	}
+	this->vukFutures->insert(this->vukFutures->end(), futures.begin(), futures.end());
 }

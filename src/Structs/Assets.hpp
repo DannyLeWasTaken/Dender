@@ -49,24 +49,11 @@ namespace Asset {
 		std::vector<Mesh*> meshes;
 		Node* parent;
 	};
-	class Scene {
-	public:
+	struct Scene {
 		std::vector<Node>     nodes;
 		std::vector<Mesh>     meshes;
-		std::vector<Buffer>   buffers;
+		std::vector<Buffer*>  buffers;
 		std::vector<Material> materials;
-
-
-		// Temporary functions. Useless as of now
-		// TODO: Load from file into CPU to GPU
-		void AllocateMesh(std::vector<uint64_t>& indices) {
-
-		}
-		void AllocateScene() {
-			for (auto& mesh: this->meshes) {
-			}
-		}
-	private:
 	};
 }
 

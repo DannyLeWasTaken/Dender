@@ -11,8 +11,8 @@
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
-Asset::Scene fast_gltf_loader::load_file(const std::filesystem::path& path, vuk::Allocator& allocator) {
-	Asset::Scene scene;
+Asset::Scene* fast_gltf_loader::load_file(const std::filesystem::path& path, vuk::Allocator& allocator) {
+	Asset::Scene* scene = new Asset::Scene{};
 	std::unique_ptr<fastgltf::Asset> gltf_asset;
 
 	{
@@ -49,21 +49,24 @@ Asset::Scene fast_gltf_loader::load_file(const std::filesystem::path& path, vuk:
 		gltf_asset = gltf->getParsedAsset();
 	}
 
+	std::cout << "gltf_asset->buffer.size(): " << gltf_asset->buffers.size() << std::endl;
 	for (auto& buffer: gltf_asset->buffers) {
 		// TODO: RECODE THIS!!!!
 		std::visit(overloaded {
 						   [](auto& arg) {},
 						   [&](fastgltf::sources::Vector& vector) {
+							   //std::cout << vector.bytes.size() << std::endl;
 							   auto [vk_buffer, future] = vuk::create_buffer(allocator,
 																			  vuk::MemoryUsage::eGPUonly,
 																			  vuk::DomainFlagBits::eTransferOnGraphics,
 																			  std::span(vector.bytes));
-
-							   scene.buffers.emplace_back(Asset::Buffer{
+							   Asset::Buffer* buffer_asset = new Asset::Buffer {
 									   .data = vector.bytes,
 									   .vk_buffer = std::move(vk_buffer),
 									   .future = future
-							   });
+							   };
+
+							   scene->buffers.emplace_back(buffer_asset);
 						   }
 				   }, buffer.data);
 	}
@@ -74,8 +77,12 @@ Asset::Scene fast_gltf_loader::load_file(const std::filesystem::path& path, vuk:
 	// Load meshes
 	for (auto& mesh: gltf_asset->meshes) {
 		for (auto& primitive: mesh.primitives) {
-			auto asset_mesh = load_primitive(gltf_asset, scene, primitive);
-			scene.meshes.emplace_back(asset_mesh);
+			auto [asset_mesh, success] = load_primitive(gltf_asset, scene, primitive);
+			if (success) {
+				scene->meshes.emplace_back(asset_mesh);
+			} else {
+				std::cout << "Mesh name: " << mesh.name << " has not loaded correctly!" << std::endl;
+			}
 		}
 	}
 
@@ -88,8 +95,8 @@ void fast_gltf_loader::load_mesh(std::unique_ptr<fastgltf::Asset> gltf_asset, fa
 	Asset::Mesh out_mesh{};
 
 }
-Asset::Mesh fast_gltf_loader::load_primitive(std::unique_ptr<fastgltf::Asset>& gltf_asset,
-									  Asset::Scene& scene,
+std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fastgltf::Asset>& gltf_asset,
+									  Asset::Scene* scene,
 									  fastgltf::Primitive& primitive) {
 	Asset::Mesh out_mesh{};
 
@@ -165,8 +172,8 @@ Asset::Mesh fast_gltf_loader::load_primitive(std::unique_ptr<fastgltf::Asset>& g
 		// Position
 		Asset::BufferView& position_buffer = out_mesh.positions;
 		auto& position_accessor = gltf_asset->accessors[primitive.attributes["POSITION"]];
-		if (position_accessor.bufferViewIndex.has_value())
-			return out_mesh;
+		if (!position_accessor.bufferViewIndex.has_value())
+			return std::pair<Asset::Mesh, bool>{out_mesh, false};
 
 		auto &position_view = gltf_asset->bufferViews[position_accessor.bufferViewIndex.value()];
 		auto offset = position_accessor.byteOffset;
@@ -175,7 +182,8 @@ Asset::Mesh fast_gltf_loader::load_primitive(std::unique_ptr<fastgltf::Asset>& g
 		position_buffer.offset = offset;
 		position_buffer.format = get_internal_format(position_accessor.componentType,
 													 position_accessor.type);
-		position_buffer.buffer = &scene.buffers[position_accessor.bufferViewIndex.value()];
+		std::cout << scene->buffers.size() << " | " << position_accessor.bufferViewIndex.value() << std::endl;
+		position_buffer.buffer = scene->buffers[position_accessor.bufferViewIndex.value() - 1];
 
 		if (position_view.byteStride.has_value()) {
 			position_buffer.stride = position_view.byteStride.value();
@@ -192,7 +200,7 @@ Asset::Mesh fast_gltf_loader::load_primitive(std::unique_ptr<fastgltf::Asset>& g
 		auto& indices_accessor = gltf_asset->accessors[primitive.indicesAccessor.value()];
 		Asset::IndexView& index_buffer = out_mesh.indices;
 		if (!indices_accessor.bufferViewIndex.has_value())
-			return out_mesh;
+			return std::pair<Asset::Mesh, bool>{out_mesh, false};
 		auto& indices_view = gltf_asset->bufferViews[indices_accessor.bufferViewIndex.value()];
 
 		index_buffer.count       = indices_accessor.count;
@@ -202,7 +210,7 @@ Asset::Mesh fast_gltf_loader::load_primitive(std::unique_ptr<fastgltf::Asset>& g
 											 indices_accessor.componentType
 											 );
 		index_buffer.format      = get_index_format(indices_accessor.componentType);
-		index_buffer.buffer      = &scene.buffers[indices_accessor.bufferViewIndex.value()];
+		index_buffer.buffer      = scene->buffers[indices_accessor.bufferViewIndex.value()];
 	}
 
 	{
@@ -217,5 +225,5 @@ Asset::Mesh fast_gltf_loader::load_primitive(std::unique_ptr<fastgltf::Asset>& g
 	{
 		// Materials
 	}
-	return out_mesh;
+	return std::pair<Asset::Mesh, bool>{out_mesh, true};
 }

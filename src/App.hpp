@@ -18,7 +18,7 @@
 #include "vuk/RenderGraph.hpp"
 #include "vuk/SampledImage.hpp"
 #include "vuk/resources/DeviceFrameResource.hpp"
-#include "./Structs/Assets.h"
+#include "./Assets/fast_gltf_loader.hpp"
 
 class Scene;
 class GltfScene;
@@ -50,7 +50,7 @@ public:
     vkb::Instance vkbInstance;
     vkb::Device   vkbDevice;
 
-    GltfScene* scene;
+    Asset::Scene* scene;
 
     // FUNCTIONS
     App();
@@ -72,8 +72,7 @@ protected:
 private:
     int num_frames = 0;
     double old_time;
-
-    void PrimitiveToGeometryVk(const Primitive *mesh);
+	fast_gltf_loader gltf_loader;
 };
 
 

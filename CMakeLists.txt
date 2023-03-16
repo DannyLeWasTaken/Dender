@@ -94,7 +94,7 @@ add_executable(Dender
         src/utils.hpp
         src/App.cpp src/App.hpp
         #src/Assets/Scene.cpp src/Assets/Scene.hpp
-        src/RaytracingBuilder.hpp src/RaytracingBuilder.cpp src/Assets/GltfScene.cpp src/Assets/GltfScene.hpp src/Assets/TinyGltfLoader.cpp src/Assets/TinyGltfLoader.hpp src/Assets/TinyGltfLoader.hpp src/Structs/Assets.h src/Assets/fast_gltf_loader.hpp src/Assets/fast_gltf_loader.cpp src/Structs/Assets.hpp src/AccelerationStructure.hpp)
+        src/Assets/TinyGltfLoader.cpp src/Assets/TinyGltfLoader.hpp src/Assets/TinyGltfLoader.hpp src/Structs/Assets.h src/Assets/fast_gltf_loader.hpp src/Assets/fast_gltf_loader.cpp src/Structs/Assets.hpp src/AccelerationStructure.hpp)
 
 
 
