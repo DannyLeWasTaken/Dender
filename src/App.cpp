@@ -205,6 +205,11 @@ void App::cleanup() {
         }
     }
     **/
+    for (auto& buffer: this->scene->buffers) {
+        if (buffer && buffer->vk_buffer) {
+            buffer->vk_buffer.reset();
+        }
+    }
     std::cout << "Freed all textures" << std::endl;
     presentReady.reset();
     std::cout << "1" << std::endl;
@@ -212,8 +217,6 @@ void App::cleanup() {
     std::cout << "2" << std::endl;
     vukDeviceSfResource.reset();
     std::cout << "3" << std::endl;
-	// TODO: clean up scene
-    std::cout << "3.5" << std::endl;
     context.reset();
     std::cout << "4" << std::endl;
     vkDestroySurfaceKHR(vkbInstance.instance, surface, nullptr);
