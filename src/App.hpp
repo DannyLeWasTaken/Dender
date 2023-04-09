@@ -63,7 +63,7 @@ public:
     void loop();
     void render(vuk::Compiler& command_buffer);
 
-    void LoadSceneFromFile(std::string path);
+    void LoadSceneFromFile(const std::string& path);
 
 protected:
 

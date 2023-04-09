@@ -397,7 +397,7 @@ void App::render(vuk::Compiler& compiler) {
     }
 }
 
-void App::LoadSceneFromFile(std::string path)
+void App::LoadSceneFromFile(const std::string& path)
 {
     /**
     // Load scene
