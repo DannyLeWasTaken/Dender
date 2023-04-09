@@ -72,7 +72,7 @@ vuk::RenderGraph AccelerationStructure::BuildBLAS(
                 *allocator,
                 vuk::BufferCreateInfo{
                     .mem_usage = vuk::MemoryUsage::eGPUonly,
-                    .size      = build_acceleration_structure.size_info.accelerationStructureSize
+                    .size      = blas_ci.size
                 }
                 );
         blas_ci.buffer = blas_buffers[i]->buffer;
@@ -119,34 +119,44 @@ vuk::RenderGraph AccelerationStructure::BuildBLAS(
     std::vector<uint32_t> indices;
     VkDeviceSize          batch_size{0};
     VkDeviceSize          batch_limit{256'000'000}; // 256 MB
+    std::vector<VkAccelerationStructureGeometryKHR> as_geometry {blases.size()};
 
     build_as.attach_buffer("blas_buffer", *blas_buffer);
+    for (auto& blas: blases) {
+        as_geometry.push_back(*blas.build_info.pGeometries);
+    }
 
     for (uint32_t i = 0; i < blases.size(); i++) {
         indices.push_back(i);
         batch_size += blases[i].size_info.accelerationStructureSize;
 
         if (batch_size >= batch_limit || i == blases.size() - 1) {
+            std::vector<BuildAccelerationStructure> index_blas;
+            std::vector<VkAccelerationStructureGeometryKHR> index_geometries;
             for (auto& index: indices) {
-                std::cout << "Made stuff" << std::endl;
-                auto blas = blases[index];
-
-                // TODO: build_as can take in more than 1 as to build at a time
-                build_as.add_pass({
-                    .resources = {
-                            "blas_buffer"_buffer >> vuk::eAccelerationStructureBuildWrite,
-                            },
-                            .execute = [as_geometry = *blas.build_info.pGeometries,
-                                        range_info = blas.range_info,
-                                        build_info = blas.build_info ](vuk::CommandBuffer& command_buffer) mutable {
-                        // pGeometries is just a pointer and as such we need to copy of pGeometries itself since copying build_info does not copy over pGeometries
-                        // tl;dr deal with dangling pointer
-                        build_info.pGeometries = &as_geometry;
-                        const VkAccelerationStructureBuildRangeInfoKHR* pblas_offset = &range_info;
-                        command_buffer.build_acceleration_structures(1, &build_info, &pblas_offset);
-                    }
-                });
+                index_blas.emplace_back(blases[index]);
+                index_geometries.emplace_back(*blases[index].build_info.pGeometries);
             }
+            build_as.add_pass( {
+                .resources { "blas_buffer"_buffer >> vuk::eAccelerationStructureBuildWrite, },
+                .execute = [blases = index_blas, as_geometry = index_geometries](vuk::CommandBuffer& command_buffer) mutable {
+                    for (uint32_t i = 0; i < blases.size(); i++) {
+                        auto& blas = blases[i];
+                        auto& range_info = blas.range_info;
+                        auto& build_info = blas.build_info;
+                        // Deal with dangling pointer here since ptr do not copy over their values
+                        build_info.pGeometries = &as_geometry[i];
+
+                        const auto* pblas_offset = &range_info;
+                        command_buffer.build_acceleration_structures(
+                                1,
+                                &build_info,
+                                &pblas_offset);
+
+                    }
+                }
+            } );
+
             indices.clear();
             batch_size = 0;
         }
