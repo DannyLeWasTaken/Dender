@@ -147,7 +147,7 @@ AccelerationStructure::SceneAccelerationStructure AccelerationStructure::build_b
 
 
             // TODO: THERE IS A 100% MORE INTELLIGENT WAY TO BUILD YOUR BLASES WITHOUT HAVING TO CREATE
-            //  A FUCKING RENDERPASS FOR EACH ACCELERATION STRUCTURE.d
+            //  A FUCKING RENDERPASS FOR EACH ACCELERATION STRUCTURE.
             for (auto &index: indices) {
                 render_as blas{
                     .range_info =   blases[index].range_info,
