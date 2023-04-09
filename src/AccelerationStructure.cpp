@@ -6,21 +6,22 @@
 #include <vuk/Buffer.hpp>
 #include <vuk/AllocatorHelpers.hpp>
 #include <vuk/CommandBuffer.hpp>
+#include <iostream>
 
-AccelerationStructure::AccelerationStructure(vuk::Context inContext,
-                                             vuk::Allocator inAllocator):
-                                             context(std::move(inContext)),
+AccelerationStructure::AccelerationStructure(
+        std::optional<vuk::Allocator> inAllocator):
+                                             context(inAllocator->get_context()),
                                              allocator(inAllocator) {
 
 }
 
 
-void AccelerationStructure::BuildBLAS(
+vuk::RenderGraph AccelerationStructure::BuildBLAS(
         const std::vector<AccelerationStructure::BlasInput>& blas_input,
         VkBuildAccelerationStructureFlagsKHR flags) {
 
     std::vector<BuildAccelerationStructure> blases(blas_input.size());
-    std::vector<vuk::Unique<vuk::Buffer>> blas_buffers;
+    std::vector<vuk::Unique<vuk::Buffer>> blas_buffers(blas_input.size());
     vuk::Unique<vuk::Buffer> blas_buffer;
 
     uint32_t max_scratch_size{0};
@@ -35,7 +36,7 @@ void AccelerationStructure::BuildBLAS(
         build_info.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
         build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
         build_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
-        build_info.flags = input.flags | flags;
+        build_info.flags = flags;
         build_info.geometryCount = static_cast<uint32_t>(input.as_geometry.size());
         build_info.pGeometries = input.as_geometry.data();
 
@@ -44,10 +45,16 @@ void AccelerationStructure::BuildBLAS(
 
         // Finding sizes to create acceleration structures and scratch
         std::vector<uint32_t> max_primitive_count(input.as_build_offset_info.size());
-        for (auto tt = 0; tt < input.as_build_offset_info.size(); tt++)
+        for (auto tt = 0; tt < input.as_build_offset_info.size(); tt++) {
             max_primitive_count[tt] = input.as_build_offset_info[tt].primitiveCount;
+            std::cout << max_primitive_count[tt] << std::endl;
+        }
+
+        VkDevice vk_device = this->context.device;
+
         this->context.vkGetAccelerationStructureBuildSizesKHR(
-                this->context.device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+                vk_device,
+                VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
                 &build_acceleration_structure.build_info,
                 max_primitive_count.data(),
                 &build_acceleration_structure.size_info
@@ -62,7 +69,7 @@ void AccelerationStructure::BuildBLAS(
         blas_ci.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
         blas_ci.size = build_acceleration_structure.size_info.accelerationStructureSize;
         blas_buffers[i] = *vuk::allocate_buffer(
-                allocator,
+                *allocator,
                 vuk::BufferCreateInfo{
                     .mem_usage = vuk::MemoryUsage::eGPUonly,
                     .size      = build_acceleration_structure.size_info.accelerationStructureSize
@@ -71,35 +78,37 @@ void AccelerationStructure::BuildBLAS(
         blas_ci.buffer = blas_buffers[i]->buffer;
         blas_ci.offset = blas_buffers[i]->offset;
 
-        build_acceleration_structure.as = vuk::Unique<VkAccelerationStructureKHR>(allocator);
-        allocator.allocate_acceleration_structures({&*build_acceleration_structure.as, 1},
+
+        //auto v = vuk::Unique<VkAccelerationStructureKHR>(*allocator).release();
+        build_acceleration_structure.as = vuk::Unique<VkAccelerationStructureKHR>(
+                *allocator).release();
+        allocator->allocate_acceleration_structures({&build_acceleration_structure.as, 1},
                                                    {&blas_ci, 1});
+
     }
 
     // Allocate the scratch buffers holding the temporary data of the acceleration structure builder
     auto scratch_buffer = *vuk::allocate_buffer(
-            allocator,
+            *allocator,
             vuk::BufferCreateInfo{
                 .mem_usage = vuk::MemoryUsage::eGPUonly,
                 .size      = max_scratch_size
             }
             );
     blas_buffer = *vuk::allocate_buffer(
-            allocator,
+            *allocator,
             vuk::BufferCreateInfo {
                 .mem_usage = vuk::MemoryUsage::eGPUonly,
                 .size = as_total_size
             }
             );
-    blas_buffer;
-
 
     // Update build information
     for (uint32_t i = 0; i < blases.size(); i++) {
         BuildAccelerationStructure& build_acceleration_structure = blases[i];
         build_acceleration_structure.build_info.srcAccelerationStructure = VK_NULL_HANDLE;
         build_acceleration_structure.build_info.dstAccelerationStructure =
-                *build_acceleration_structure.as;
+                &*build_acceleration_structure.as;
         build_acceleration_structure.build_info.scratchData.deviceAddress =
                 scratch_buffer->device_address;
     }
@@ -112,21 +121,37 @@ void AccelerationStructure::BuildBLAS(
     VkDeviceSize          batch_limit{256'000'000}; // 256 MB
 
     build_as.attach_buffer("blas_buffer", *blas_buffer);
-    build_as.add_pass({
-        .resources = {
-                "blas_buffer"_buffer >> vuk::eAccelerationStructureBuildWrite
-        },
-        .execute = [blas_input, &blases](vuk::CommandBuffer& command_buffer) mutable {
-            for (auto& blas: blases) {
-                const auto* range_info = &blas.range_info;
-                auto& build_info = blas.build_info;
-                //command_buffer.build_acceleration_structure(1, range_info, build_info);
-                command_buffer.build_acceleration_structures(1,
-                                                             &build_info,
-                                                             &range_info);
+
+    for (uint32_t i = 0; i < blases.size(); i++) {
+        indices.push_back(i);
+        batch_size += blases[i].size_info.accelerationStructureSize;
+
+        if (batch_size >= batch_limit || i == blases.size() - 1) {
+            for (auto& index: indices) {
+                std::cout << "Made stuff" << std::endl;
+                auto blas = blases[index];
+
+                // TODO: build_as can take in more than 1 as to build at a time
+                build_as.add_pass({
+                    .resources = {
+                            "blas_buffer"_buffer >> vuk::eAccelerationStructureBuildWrite,
+                            },
+                            .execute = [as_geometry = *blas.build_info.pGeometries,
+                                        range_info = blas.range_info,
+                                        build_info = blas.build_info ](vuk::CommandBuffer& command_buffer) mutable {
+                        // pGeometries is just a pointer and as such we need to copy of pGeometries itself since copying build_info does not copy over pGeometries
+                        // tl;dr deal with dangling pointer
+                        build_info.pGeometries = &as_geometry;
+                        const VkAccelerationStructureBuildRangeInfoKHR* pblas_offset = &range_info;
+                        command_buffer.build_acceleration_structures(1, &build_info, &pblas_offset);
+                    }
+                });
             }
-        },
-    });
+            indices.clear();
+            batch_size = 0;
+        }
+    }
+    return build_as;
 }
 
 void AccelerationStructure::CreateBLAS(vuk::CommandBuffer &command_buffer,

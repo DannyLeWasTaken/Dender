@@ -19,6 +19,7 @@
 #include "vuk/SampledImage.hpp"
 #include "vuk/resources/DeviceFrameResource.hpp"
 #include "./Assets/fast_gltf_loader.hpp"
+#include "AccelerationStructure.hpp"
 
 class Scene;
 class GltfScene;
@@ -46,11 +47,10 @@ public:
 
     GLFWwindow*  window;
     VkSurfaceKHR surface;
-
     vkb::Instance vkbInstance;
     vkb::Device   vkbDevice;
-
     Asset::Scene* scene;
+    AccelerationStructure* acceleration_structure;
 
     // FUNCTIONS
     App();

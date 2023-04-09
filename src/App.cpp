@@ -20,7 +20,7 @@ App::App() {
     std::cout << "Start app!" << std::endl;
 
     vkb::InstanceBuilder builder;
-    builder.request_validation_layers(true)
+    builder.request_validation_layers()
     .set_debug_callback([](VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
                            VkDebugUtilsMessageTypeFlagsEXT messageType,
                            const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
@@ -49,7 +49,10 @@ App::App() {
     surface = GlfwHelper::create_surface_glfw(vkbInstance.instance, window);
     selector.set_surface(surface)
     .set_minimum_version(1, 0)
-    .add_required_extension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+    .add_required_extension(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME)
+    .add_required_extension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME)
+    .add_required_extension(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME)
+    .add_required_extension(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
 
     std::cout << "2" << std::endl;
 
@@ -88,14 +91,16 @@ App::App() {
     VkPhysicalDeviceSynchronization2FeaturesKHR sync_feat{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
                                                            .synchronization2 = true };
     VkPhysicalDeviceAccelerationStructureFeaturesKHR accelFeature{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
-                                                                   .accelerationStructure = false };
+                                                                   .accelerationStructure = true };
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeature{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
-                                                                     .rayTracingPipeline = false };
+                                                                     .rayTracingPipeline = true };
     deviceBuilder = deviceBuilder.
             add_pNext(&vk12features)
             .add_pNext(&vk11features)
             .add_pNext(&sync_feat)
-            .add_pNext(&vk10features);
+            .add_pNext(&accelFeature)
+            .add_pNext(&vk10features)
+            .add_pNext(&rtPipelineFeature);
 
     auto dev_ret = deviceBuilder.build();
     if (!dev_ret) {
@@ -117,13 +122,13 @@ App::App() {
     VUK_EX_LOAD_FP(vkSetDebugUtilsObjectNameEXT);
     VUK_EX_LOAD_FP(vkCmdBeginDebugUtilsLabelEXT);
     VUK_EX_LOAD_FP(vkCmdEndDebugUtilsLabelEXT);
-    //VUK_EX_LOAD_FP(vkCmdBuildAccelerationStructuresKHR);
-    //VUK_EX_LOAD_FP(vkGetAccelerationStructureBuildSizesKHR);
-    //VUK_EX_LOAD_FP(vkCmdTraceRaysKHR);
-    //VUK_EX_LOAD_FP(vkCreateAccelerationStructureKHR);
-    //VUK_EX_LOAD_FP(vkDestroyAccelerationStructureKHR);
-    //VUK_EX_LOAD_FP(vkGetRayTracingShaderGroupHandlesKHR);
-    //VUK_EX_LOAD_FP(vkCreateRayTracingPipelinesKHR);
+    VUK_EX_LOAD_FP(vkCmdBuildAccelerationStructuresKHR);
+    VUK_EX_LOAD_FP(vkGetAccelerationStructureBuildSizesKHR);
+    VUK_EX_LOAD_FP(vkCmdTraceRaysKHR);
+    VUK_EX_LOAD_FP(vkCreateAccelerationStructureKHR);
+    VUK_EX_LOAD_FP(vkDestroyAccelerationStructureKHR);
+    VUK_EX_LOAD_FP(vkGetRayTracingShaderGroupHandlesKHR);
+    VUK_EX_LOAD_FP(vkCreateRayTracingPipelinesKHR);
 
     context.emplace(vuk::ContextCreateParameters{
         vkbInstance,
@@ -135,6 +140,7 @@ App::App() {
         VK_QUEUE_FAMILY_IGNORED,
         transferQueue,
         transfer_queue_family_index,
+        fps
     });
 
     const unsigned num_inflight_frames = 3;
@@ -146,8 +152,10 @@ App::App() {
 
     vukAllocator->allocate_semaphores(*presentReady);
     vukAllocator->allocate_semaphores(*renderComplete);
-
     vukFutures = std::make_shared<std::vector<vuk::Future>>();
+
+    acceleration_structure = new AccelerationStructure(
+            vukAllocator);
 
     std::cout << "Built!" << std::endl;
 }
@@ -429,4 +437,47 @@ void App::LoadSceneFromFile(std::string path)
 		futures.emplace_back(buffer->future);
 	}
 	this->vukFutures->insert(this->vukFutures->end(), futures.begin(), futures.end());
+
+    // Build AS
+    std::vector<AccelerationStructure::BlasInput> blas_inputs;
+    for (auto& mesh: this->scene->meshes) {
+        // Describe the mesh
+        VkAccelerationStructureGeometryTrianglesDataKHR triangles{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR };
+        triangles.vertexFormat = static_cast<VkFormat>(mesh.positions.format);
+        triangles.vertexData.deviceAddress = (*mesh.positions.buffer->vk_buffer)->device_address;
+        triangles.vertexStride             = mesh.positions.stride;
+        // Describe the index data
+        triangles.indexType = static_cast<VkIndexType>(mesh.indices.format);
+        triangles.indexData.deviceAddress = (*mesh.positions.buffer->vk_buffer)->device_address;
+        // Indicate identity transform by setting transformData to null device pointer
+        triangles.transformData = {};
+        triangles.maxVertex = mesh.positions.count;
+
+        // Identify the above data as containing opaque triangles
+        VkAccelerationStructureGeometryKHR as_geometry { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
+        as_geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+        as_geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+        as_geometry.geometry.triangles = triangles;
+
+        // Find sizes
+        VkAccelerationStructureBuildRangeInfoKHR build_range_info;
+        build_range_info.firstVertex = 0;
+        build_range_info.primitiveCount = mesh.indices.count / 3;
+        build_range_info.primitiveOffset = 0;
+        build_range_info.transformOffset = 0;
+
+        AccelerationStructure::BlasInput blas_input;
+        blas_input.as_geometry.emplace_back(as_geometry);
+        blas_input.as_build_offset_info.emplace_back(build_range_info);
+
+        blas_inputs.emplace_back(blas_input);
+    }
+    vuk::RenderGraph rendergraph_as = this->acceleration_structure->BuildBLAS(
+            blas_inputs,
+            VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
+            );
+    this->vukFutures->emplace_back(
+            vuk::Future(std::make_shared<vuk::RenderGraph>(std::move(rendergraph_as)),
+                    "blas_buffer+")
+            );
 }

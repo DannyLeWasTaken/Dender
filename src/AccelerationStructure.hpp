@@ -28,14 +28,13 @@ public:
         VkAccelerationStructureBuildGeometryInfoKHR     build_info{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR};
         VkAccelerationStructureBuildSizesInfoKHR        size_info{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
 		VkAccelerationStructureBuildRangeInfoKHR        range_info;
-        vuk::Unique<VkAccelerationStructureKHR>         as; // result acceleration structure
-        vuk::Unique<vuk::Buffer>                        scratch_buffer;
+        VkAccelerationStructureKHR_T*         as; // result acceleration structure
     };
 
-    AccelerationStructure(vuk::Context context, vuk::Allocator allocator);
+    explicit AccelerationStructure(std::optional<vuk::Allocator> allocator);
     ~AccelerationStructure();
 
-    void BuildBLAS(const std::vector<AccelerationStructure::BlasInput>& blas_input,
+    vuk::RenderGraph BuildBLAS(const std::vector<AccelerationStructure::BlasInput>& blas_input,
                    VkBuildAccelerationStructureFlagsKHR flags);
     void CreateBLAS(vuk::CommandBuffer& command_buffer,
                     std::vector<uint32_t> indices,
@@ -48,8 +47,8 @@ public:
 
 private:
     vuk::RenderGraph as_build_render_graph;
-    vuk::Context     context;
-    vuk::Allocator   allocator;
+    vuk::Context&     context;
+    std::optional<vuk::Allocator>   allocator;
 };
 
 
