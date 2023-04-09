@@ -49,8 +49,10 @@ public:
     VkSurfaceKHR surface;
     vkb::Instance vkbInstance;
     vkb::Device   vkbDevice;
-    Asset::Scene* scene;
+
+    Asset::Scene scene;
     AccelerationStructure* acceleration_structure;
+    std::vector<AccelerationStructure::BuildAccelerationStructure> scene_acceleration_structures;
 
     // FUNCTIONS
     App();

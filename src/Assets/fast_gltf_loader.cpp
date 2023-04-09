@@ -11,8 +11,8 @@
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
-Asset::Scene* fast_gltf_loader::load_file(const std::filesystem::path& path, vuk::Allocator& allocator) {
-	Asset::Scene* scene = new Asset::Scene{};
+Asset::Scene fast_gltf_loader::load_file(const std::filesystem::path& path, vuk::Allocator& allocator) {
+	Asset::Scene scene = Asset::Scene{};
 	std::unique_ptr<fastgltf::Asset> gltf_asset;
 
 	{
@@ -66,7 +66,7 @@ Asset::Scene* fast_gltf_loader::load_file(const std::filesystem::path& path, vuk
 									   .future = future
 							   };
 
-							   scene->buffers.emplace_back(buffer_asset);
+							   scene.buffers.emplace_back(buffer_asset);
 						   }
 				   }, buffer.data);
 	}
@@ -77,9 +77,9 @@ Asset::Scene* fast_gltf_loader::load_file(const std::filesystem::path& path, vuk
 	// Load meshes
 	for (auto& mesh: gltf_asset->meshes) {
 		for (auto& primitive: mesh.primitives) {
-			auto [asset_mesh, success] = load_primitive(gltf_asset, scene, primitive);
+			auto [asset_mesh, success] = load_primitive(gltf_asset, &scene, primitive);
 			if (success) {
-				scene->meshes.emplace_back(asset_mesh);
+				scene.meshes.emplace_back(asset_mesh);
 			} else {
 				std::cout << "Mesh name: " << mesh.name << " has not loaded correctly!" << std::endl;
 			}

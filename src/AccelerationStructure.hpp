@@ -28,20 +28,24 @@ public:
         VkAccelerationStructureBuildGeometryInfoKHR     build_info{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR};
         VkAccelerationStructureBuildSizesInfoKHR        size_info{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
 		VkAccelerationStructureBuildRangeInfoKHR        range_info;
-        VkAccelerationStructureKHR_T*         as; // result acceleration structure
+        vuk::Unique<VkAccelerationStructureKHR>         as; // result acceleration structure
+    };
+    struct SceneAccelerationStructure {
+        vuk::RenderGraph graph;
+        std::vector<BuildAccelerationStructure> acceleration_structures;
     };
 
     explicit AccelerationStructure(std::optional<vuk::Allocator> allocator);
     ~AccelerationStructure();
 
-    vuk::RenderGraph BuildBLAS(const std::vector<AccelerationStructure::BlasInput>& blas_input,
-                   VkBuildAccelerationStructureFlagsKHR flags);
-    void CreateBLAS(vuk::CommandBuffer& command_buffer,
-                    std::vector<uint32_t> indices,
-                    std::vector<BuildAccelerationStructure>& build_as,
-                    VkDeviceAddress scratch_address);
+    SceneAccelerationStructure build_blas(const std::vector<AccelerationStructure::BlasInput>& blas_input,
+                                VkBuildAccelerationStructureFlagsKHR flags);
+    void create_blas(vuk::CommandBuffer& command_buffer,
+                     std::vector<uint32_t> indices,
+                     std::vector<BuildAccelerationStructure>& build_as,
+                     VkDeviceAddress scratch_address);
 
-    void AddTLAS();
+    void build_tlas();
 
     void InitalizeAS();
 

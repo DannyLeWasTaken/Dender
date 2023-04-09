@@ -213,10 +213,14 @@ void App::cleanup() {
         }
     }
     **/
-    for (auto& buffer: this->scene->buffers) {
+    for (auto& buffer: this->scene.buffers) {
         if (buffer && buffer->vk_buffer) {
             buffer->vk_buffer.reset();
         }
+    }
+
+    for (auto& as: this->scene_acceleration_structures) {
+        vukAllocator->deallocate({&*as.as, 1});
     }
     std::cout << "Freed all textures" << std::endl;
     presentReady.reset();
@@ -301,7 +305,7 @@ void App::render(vuk::Compiler& compiler) {
     struct VP {
         glm::mat4 view;
         glm::mat4 proj;
-    } vp;
+    } vp{};
     // Fill the view matrix, looking a bit from top to the center
     vp.view = glm::lookAt(glm::vec3(0, 1.5, 3.5), glm::vec3(0), glm::vec3(0, 1, 0));
     // Fill the projection matrix, standard perspective matrix
@@ -350,11 +354,11 @@ void App::render(vuk::Compiler& compiler) {
            .set_rasterization({})
            .set_color_blend("01_triangle", {})
            .bind_buffer(0, 0, uboVP);
-           glm::mat4* model = command_buffer.map_scratch_buffer<glm::mat4>(0, 1);
+           auto* model = command_buffer.map_scratch_buffer<glm::mat4>(0, 1);
            *model = static_cast<glm::mat4>(glm::angleAxis(glm::radians(360.f), glm::vec3(0.f, 1.f, 0.f)));
 
-           for (int i = 0; i < gltf_scene->meshes.size(); i++) {
-               auto& mesh = gltf_scene->meshes[i];
+           for (int i = 0; i < gltf_scene.meshes.size(); i++) {
+               auto& mesh = gltf_scene.meshes[i];
 			   vuk::VertexInputAttributeDescription vertex_attributes{};
 			   vertex_attributes.format = mesh.positions.format;
 			   vertex_attributes.offset = mesh.positions.offset;
@@ -431,16 +435,19 @@ void App::LoadSceneFromFile(std::string path)
     **/
 
     std::filesystem::path filePath = std::filesystem::path{path};
-    this->scene = this->gltf_loader.load_file(filePath, *this->vukAllocator);
+    auto loaded_scene = this->gltf_loader.load_file(filePath, *this->vukAllocator);
+    //this->scene = static_cast<RenderScene>(this->gltf_loader.load_file(filePath, *this->vukAllocator));
+    this->scene = loaded_scene;
+
 	std::vector<vuk::Future> futures;
-	for (auto& buffer: this->scene->buffers) {
+	for (auto& buffer: this->scene.buffers) {
 		futures.emplace_back(buffer->future);
 	}
 	this->vukFutures->insert(this->vukFutures->end(), futures.begin(), futures.end());
 
     // Build AS
     std::vector<AccelerationStructure::BlasInput> blas_inputs;
-    for (auto& mesh: this->scene->meshes) {
+    for (auto& mesh: this->scene.meshes) {
         // Describe the mesh
         VkAccelerationStructureGeometryTrianglesDataKHR triangles{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR };
         triangles.vertexFormat = static_cast<VkFormat>(mesh.positions.format);
@@ -472,12 +479,17 @@ void App::LoadSceneFromFile(std::string path)
 
         blas_inputs.emplace_back(blas_input);
     }
-    vuk::RenderGraph rendergraph_as = this->acceleration_structure->BuildBLAS(
+    AccelerationStructure::SceneAccelerationStructure rendergraph_as = this->acceleration_structure->build_blas(
             blas_inputs,
             VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
-            );
+    );
     this->vukFutures->emplace_back(
-            vuk::Future(std::make_shared<vuk::RenderGraph>(std::move(rendergraph_as)),
+            vuk::Future(std::make_shared<vuk::RenderGraph>(std::move(rendergraph_as.graph)),
                     "blas_buffer+")
             );
+    /**
+    this->scene_acceleration_structures.insert(this->scene_acceleration_structures.begin(),
+                                                rendergraph_as.acceleration_structures.begin(),
+                                                rendergraph_as.acceleration_structures.end());
+                                                **/
 }

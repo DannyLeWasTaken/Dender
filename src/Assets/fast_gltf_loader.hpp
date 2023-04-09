@@ -20,7 +20,7 @@
 
 class fast_gltf_loader {
 public:
-    Asset::Scene* load_file(const std::filesystem::path& path, vuk::Allocator& allocator);
+    Asset::Scene load_file(const std::filesystem::path& path, vuk::Allocator& allocator);
 private:
     void load_node(std::unique_ptr<fastgltf::Asset> gltf_asset, fastgltf::Node& node);
     void load_mesh(std::unique_ptr<fastgltf::Asset> gltf_asset, fastgltf::Mesh& mesh);
