@@ -22,7 +22,6 @@ AccelerationStructure::SceneAccelerationStructure AccelerationStructure::build_b
 
     std::vector<BuildAccelerationStructure> blases;
     std::vector<vuk::Unique<vuk::Buffer>> blas_buffers;
-    vuk::Unique<vuk::Buffer> blas_buffer;
 
     uint32_t max_scratch_size{0};
     uint32_t as_total_size{0};
@@ -71,21 +70,22 @@ AccelerationStructure::SceneAccelerationStructure AccelerationStructure::build_b
         VkAccelerationStructureCreateInfoKHR blas_ci{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR };
         blas_ci.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
         blas_ci.size = size_info.accelerationStructureSize;
-        blas_buffers.emplace_back(*vuk::allocate_buffer(
+        auto blas_buffer = *vuk::allocate_buffer(
                 *allocator,
                 vuk::BufferCreateInfo{
                     .mem_usage = vuk::MemoryUsage::eGPUonly,
-                    .size      = blas_ci.size
+                    .size      = size_info.accelerationStructureSize
                 }
-                ));
-        blas_ci.buffer = blas_buffers[i]->buffer;
-        blas_ci.offset = blas_buffers[i]->offset;
+                );
+        blas_ci.buffer = blas_buffer->buffer;
+        blas_ci.offset = blas_buffer->offset;
 
         BuildAccelerationStructure build_acceleration_structure {
                 .build_info = build_info,
-                .size_info =  size_info,
+                .size_info  = size_info,
                 .range_info = range_info,
-                .as         = vuk::Unique<VkAccelerationStructureKHR>(*allocator)
+                .as         = vuk::Unique<VkAccelerationStructureKHR>(*allocator),
+                .buffer     = std::move(blas_buffer)
         };
 
         allocator->allocate_acceleration_structures({&*build_acceleration_structure.as, 1},
@@ -100,13 +100,6 @@ AccelerationStructure::SceneAccelerationStructure AccelerationStructure::build_b
             vuk::BufferCreateInfo{
                 .mem_usage = vuk::MemoryUsage::eGPUonly,
                 .size      = max_scratch_size
-            }
-            );
-    blas_buffer = *vuk::allocate_buffer(
-            *allocator,
-            vuk::BufferCreateInfo {
-                .mem_usage = vuk::MemoryUsage::eGPUonly,
-                .size = as_total_size
             }
             );
 
@@ -128,7 +121,7 @@ AccelerationStructure::SceneAccelerationStructure AccelerationStructure::build_b
     VkDeviceSize          batch_limit{256'000'000}; // 256 MB
     std::vector<VkAccelerationStructureGeometryKHR> as_geometry {blases.size()};
 
-    build_as.attach_buffer("blas_buffer", *blas_buffer);
+    //build_as.attach_buffer("blas_buffer", *blas_buffer);
     for (auto& blas: blases) {
         as_geometry.push_back(*blas.build_info.pGeometries);
     }
@@ -139,20 +132,48 @@ AccelerationStructure::SceneAccelerationStructure AccelerationStructure::build_b
 
         if (batch_size >= batch_limit || i == blases.size() - 1) {
             struct render_as {
-                VkAccelerationStructureBuildRangeInfoKHR        range_info;
+                VkAccelerationStructureBuildRangeInfoKHR        range_info{};
                 VkAccelerationStructureBuildGeometryInfoKHR     build_info{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR};
-                VkAccelerationStructureGeometryKHR              as_geometry;
+                VkAccelerationStructureGeometryKHR              as_geometry{};
             };
-            std::vector<render_as> index_blas;
+            //std::vector<render_as> index_blas;
+            auto blas_buffer = vuk::allocate_buffer(
+                    *allocator,
+                    vuk::BufferCreateInfo {
+                        .mem_usage = vuk::MemoryUsage::eGPUonly,
+                        .size      = batch_size
+                    });
 
-            for (auto& index: indices) {
-                render_as as{
+
+
+            // TODO: THERE IS A 100% MORE INTELLIGENT WAY TO BUILD YOUR BLASES WITHOUT HAVING TO CREATE
+            //  A FUCKING RENDERPASS FOR EACH ACCELERATION STRUCTURE.d
+            for (auto &index: indices) {
+                render_as blas{
                     .range_info =   blases[index].range_info,
                     .build_info =   blases[index].build_info,
                     .as_geometry = *blases[index].build_info.pGeometries
                 };
-                index_blas.emplace_back(as);
+
+                build_as.attach_buffer("blas_buffer", *blases[index].buffer);
+                build_as.add_pass({
+                    .resources  = { "blas_buffer"_buffer >> vuk::eAccelerationStructureBuildWrite },
+                    .execute    = [blas](vuk::CommandBuffer& command_buffer) mutable {
+                        auto& range_info = blas.range_info;
+                        auto& build_info = blas.build_info;
+                        // Deal with dangling pointer here since ptr do not copy over their values
+                        build_info.pGeometries = &blas.as_geometry;
+
+                        const auto* pblas_offset = &range_info;
+                        command_buffer.build_acceleration_structures(
+                                1,
+                                &build_info,
+                                &pblas_offset);
+                    }
+                });
             }
+
+            /**
             build_as.add_pass( {
                 .resources { "blas_buffer"_buffer >> vuk::eAccelerationStructureBuildWrite, },
                 .execute = [blases = index_blas](vuk::CommandBuffer& command_buffer) mutable {
@@ -172,6 +193,7 @@ AccelerationStructure::SceneAccelerationStructure AccelerationStructure::build_b
                     }
                 }
             } );
+            **/
 
             indices.clear();
             batch_size = 0;

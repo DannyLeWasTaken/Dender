@@ -220,7 +220,8 @@ void App::cleanup() {
     }
 
     for (auto& as: this->scene_acceleration_structures) {
-        vuk_allocator->deallocate({&*as.as, 1});
+        as.as.reset();
+        as.buffer.reset();
     }
     std::cout << "Freed all textures" << std::endl;
     present_ready.reset();
@@ -487,9 +488,18 @@ void App::LoadSceneFromFile(const std::string& path)
             vuk::Future(std::make_shared<vuk::RenderGraph>(std::move(rendergraph_as.graph)),
                     "blas_buffer+")
             );
+
+    // Handle TLAS creation
+    for (auto& mesh: this->scene.meshes) {
+
+    }
+
     /**
     this->scene_acceleration_structures.insert(this->scene_acceleration_structures.begin(),
                                                 rendergraph_as.acceleration_structures.begin(),
                                                 rendergraph_as.acceleration_structures.end());
-                                                **/
+    **/
+    for (auto& as: rendergraph_as.acceleration_structures) {
+        this->scene_acceleration_structures.emplace_back(std::move(as));
+    }
 }

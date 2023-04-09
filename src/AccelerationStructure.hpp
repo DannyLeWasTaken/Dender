@@ -29,6 +29,7 @@ public:
         VkAccelerationStructureBuildSizesInfoKHR        size_info{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
 		VkAccelerationStructureBuildRangeInfoKHR        range_info;
         vuk::Unique<VkAccelerationStructureKHR>         as; // result acceleration structure
+        vuk::Unique<vuk::Buffer>                        buffer;
     };
     struct SceneAccelerationStructure {
         vuk::RenderGraph graph;
@@ -45,7 +46,9 @@ public:
                      std::vector<BuildAccelerationStructure>& build_as,
                      VkDeviceAddress scratch_address);
 
-    void build_tlas();
+    void build_tlas(
+
+            );
 
     void InitalizeAS();
 
