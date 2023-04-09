@@ -32,18 +32,18 @@ public:
 
     // VARIABLES
     VkDevice                                        device;
-    VkPhysicalDevice                                physicalDevice;
-    VkQueue                                         graphicsQueue;
-    VkQueue                                         transferQueue;
+    VkPhysicalDevice                                physical_device;
+    VkQueue                                         graphics_queue;
+    VkQueue                                         transfer_queue;
     std::optional<vuk::Context>                     context;
-    std::optional<vuk::DeviceSuperFrameResource>    vukDeviceSfResource;
-    std::optional<vuk::Allocator>                   vukAllocator;
+    std::optional<vuk::DeviceSuperFrameResource>    vuk_device_sf_resource;
+    std::optional<vuk::Allocator>                   vuk_allocator;
     vuk::SwapchainRef                               swapchain;
-    vuk::Unique<std::array<VkSemaphore, 3>>         presentReady;
-    vuk::Unique<std::array<VkSemaphore, 3>>         renderComplete;
+    vuk::Unique<std::array<VkSemaphore, 3>>         present_ready;
+    vuk::Unique<std::array<VkSemaphore, 3>>         render_complete;
 
 
-    std::shared_ptr<std::vector<vuk::Future>> vukFutures;
+    std::shared_ptr<std::vector<vuk::Future>> vuk_futures;
 
     GLFWwindow*  window;
     VkSurfaceKHR surface;

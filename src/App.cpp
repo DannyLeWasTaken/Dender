@@ -67,7 +67,7 @@ App::App() {
                                  "Common cause: Non-hardware accelerated ray tracing GPU" << std::endl;
     }
     vkbPhysicalDevice = phys_ret.value();
-    physicalDevice = vkbPhysicalDevice.physical_device;
+    physical_device = vkbPhysicalDevice.physical_device;
 
     std::cout << "2.5" << std::endl;
 
@@ -109,9 +109,9 @@ App::App() {
     }
 
     vkbDevice = dev_ret.value();
-    graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
+    graphics_queue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
     auto graphics_queue_family_index = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
-    transferQueue = vkbDevice.get_queue(vkb::QueueType::transfer).value();
+    transfer_queue = vkbDevice.get_queue(vkb::QueueType::transfer).value();
     auto transfer_queue_family_index = vkbDevice.get_queue_index(vkb::QueueType::transfer).value();
     device = vkbDevice.device;
 
@@ -131,31 +131,31 @@ App::App() {
     VUK_EX_LOAD_FP(vkCreateRayTracingPipelinesKHR);
 
     context.emplace(vuk::ContextCreateParameters{
-        vkbInstance,
-        device,
-        physicalDevice,
-        graphicsQueue,
-        graphics_queue_family_index,
-        VK_NULL_HANDLE,
-        VK_QUEUE_FAMILY_IGNORED,
-        transferQueue,
-        transfer_queue_family_index,
-        fps
+            vkbInstance,
+            device,
+            physical_device,
+            graphics_queue,
+            graphics_queue_family_index,
+            VK_NULL_HANDLE,
+            VK_QUEUE_FAMILY_IGNORED,
+            transfer_queue,
+            transfer_queue_family_index,
+            fps
     });
 
     const unsigned num_inflight_frames = 3;
-    vukDeviceSfResource.emplace(*context, num_inflight_frames);
-    vukAllocator.emplace(*vukDeviceSfResource);
+    vuk_device_sf_resource.emplace(*context, num_inflight_frames);
+    vuk_allocator.emplace(*vuk_device_sf_resource);
     swapchain = context->add_swapchain(util::make_swapchain(vkbDevice, {}));
-    presentReady = vuk::Unique<std::array<VkSemaphore, 3>>(*vukAllocator);
-    renderComplete = vuk::Unique<std::array<VkSemaphore, 3>>(*vukAllocator);
+    present_ready = vuk::Unique<std::array<VkSemaphore, 3>>(*vuk_allocator);
+    render_complete = vuk::Unique<std::array<VkSemaphore, 3>>(*vuk_allocator);
 
-    vukAllocator->allocate_semaphores(*presentReady);
-    vukAllocator->allocate_semaphores(*renderComplete);
-    vukFutures = std::make_shared<std::vector<vuk::Future>>();
+    vuk_allocator->allocate_semaphores(*present_ready);
+    vuk_allocator->allocate_semaphores(*render_complete);
+    vuk_futures = std::make_shared<std::vector<vuk::Future>>();
 
     acceleration_structure = new AccelerationStructure(
-            vukAllocator);
+            vuk_allocator);
 
     std::cout << "Built!" << std::endl;
 }
@@ -176,11 +176,11 @@ App::~App() {
     }
     **/
     std::cout << "Freed all textures" << std::endl;
-    presentReady.reset();
+    present_ready.reset();
     std::cout << "1" << std::endl;
-    renderComplete.reset();
+    render_complete.reset();
     std::cout << "2" << std::endl;
-    vukDeviceSfResource.reset();
+    vuk_device_sf_resource.reset();
     std::cout << "3" << std::endl;
     context.reset();
     std::cout << "4" << std::endl;
@@ -220,14 +220,14 @@ void App::cleanup() {
     }
 
     for (auto& as: this->scene_acceleration_structures) {
-        vukAllocator->deallocate({&*as.as, 1});
+        vuk_allocator->deallocate({&*as.as, 1});
     }
     std::cout << "Freed all textures" << std::endl;
-    presentReady.reset();
+    present_ready.reset();
     std::cout << "1" << std::endl;
-    renderComplete.reset();
+    render_complete.reset();
     std::cout << "2" << std::endl;
-    vukDeviceSfResource.reset();
+    vuk_device_sf_resource.reset();
     std::cout << "3" << std::endl;
     context.reset();
     std::cout << "4" << std::endl;
@@ -267,8 +267,8 @@ void App::setup() {
 
 void App::loop() {
     vuk::Compiler compiler;
-    vuk::wait_for_futures_explicit(*vukAllocator, compiler, *vukFutures);
-    vukFutures->clear();
+    vuk::wait_for_futures_explicit(*vuk_allocator, compiler, *vuk_futures);
+    vuk_futures->clear();
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
@@ -283,11 +283,11 @@ void App::loop() {
 vuk::SingleSwapchainRenderBundle bundle;
 
 void App::render(vuk::Compiler& compiler) {
-    auto& device_frame_resource = vukDeviceSfResource->get_next_frame();
+    auto& device_frame_resource = vuk_device_sf_resource->get_next_frame();
     context->next_frame();
     vuk::Allocator frame_allocator(device_frame_resource);
-    bundle = *vuk::acquire_one(*context, swapchain, (*presentReady)[context->get_frame_count() % 3],
-                               (*renderComplete)[context->get_frame_count() % 3]);
+    bundle = *vuk::acquire_one(*context, swapchain, (*present_ready)[context->get_frame_count() % 3],
+                               (*render_complete)[context->get_frame_count() % 3]);
 
     /**
     std::vector<uint64_t> buffer_addresses;
@@ -406,44 +406,44 @@ void App::LoadSceneFromFile(std::string path)
     Scenes.push_back(scene);
 
     // Create buffers
-    auto [vert_buf, vert_fut] = vuk::create_buffer(*vukAllocator,
+    auto [vert_buf, vert_fut] = vuk::create_buffer(*vuk_allocator,
                        vuk::MemoryUsage::eGPUonly,
                        vuk::DomainFlagBits::eTransferOnGraphics,
                        std::span(scene->m_Vertices));
     m_VertexBuffer = std::move(vert_buf);
-    vukFutures->emplace_back(std::move(vert_fut));
+    vuk_futures->emplace_back(std::move(vert_fut));
 
-    auto [ind_buf, ind_fut] = vuk::create_buffer(*vukAllocator,
+    auto [ind_buf, ind_fut] = vuk::create_buffer(*vuk_allocator,
                                                    vuk::MemoryUsage::eGPUonly,
                                                    vuk::DomainFlagBits::eTransferOnGraphics,
                                                    std::span(scene->m_Indices));
     m_IndexBuffer = std::move(ind_buf);
-    vukFutures->emplace_back(std::move(ind_fut));
+    vuk_futures->emplace_back(std::move(ind_fut));
 
 
-    auto [nrm_buf, nrm_fut] = vuk::create_buffer(*vukAllocator,
+    auto [nrm_buf, nrm_fut] = vuk::create_buffer(*vuk_allocator,
                                                  vuk::MemoryUsage::eGPUonly,
                                                  vuk::DomainFlagBits::eTransferOnGraphics,
                m_buf);
                                   std::span(scene->m_Normals));
-    m_IndexBuffer = std::move(nr    vukFutures->emplace_back(std::move(nrm_fut));
+    m_IndexBuffer = std::move(nr    vuk_futures->emplace_back(std::move(nrm_fut));
 
-    auto [uv_buf, uv_fut] = vuk::create_buffer(*vukAllocator,
+    auto [uv_buf, uv_fut] = vuk::create_buffer(*vuk_allocator,
                                                  vuk::MemoryUsage::eGPUonly,
                                                  vuk::DomainFlagBits::eTransferOnGraphics,
                                                  std::span(scene->m_texCoords));
     **/
 
     std::filesystem::path filePath = std::filesystem::path{path};
-    auto loaded_scene = this->gltf_loader.load_file(filePath, *this->vukAllocator);
-    //this->scene = static_cast<RenderScene>(this->gltf_loader.load_file(filePath, *this->vukAllocator));
+    auto loaded_scene = this->gltf_loader.load_file(filePath, *this->vuk_allocator);
+    //this->scene = static_cast<RenderScene>(this->gltf_loader.load_file(filePath, *this->vuk_allocator));
     this->scene = loaded_scene;
 
 	std::vector<vuk::Future> futures;
 	for (auto& buffer: this->scene.buffers) {
 		futures.emplace_back(buffer->future);
 	}
-	this->vukFutures->insert(this->vukFutures->end(), futures.begin(), futures.end());
+	this->vuk_futures->insert(this->vuk_futures->end(), futures.begin(), futures.end());
 
     // Build AS
     std::vector<AccelerationStructure::BlasInput> blas_inputs;
@@ -483,7 +483,7 @@ void App::LoadSceneFromFile(std::string path)
             blas_inputs,
             VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
     );
-    this->vukFutures->emplace_back(
+    this->vuk_futures->emplace_back(
             vuk::Future(std::make_shared<vuk::RenderGraph>(std::move(rendergraph_as.graph)),
                     "blas_buffer+")
             );
