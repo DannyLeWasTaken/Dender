@@ -316,8 +316,8 @@ void App::render(vuk::Compiler& compiler) {
         glm::mat4 inv_view;
         glm::mat4 inv_proj;
     } vp;
-    vp.inv_view = glm::lookAt(glm::vec3(0, 1.5, 3.5), glm::vec3(0), glm::vec3(0, 1, 0));
-    vp.inv_proj = glm::perspective(glm::degrees(70.f), 1.f, 1.f, 100.f);
+    vp.inv_view = glm::lookAt(glm::vec3(0, 0, 10), glm::vec3(0), glm::vec3(0, 1, 0));
+    vp.inv_proj = glm::perspective(glm::degrees(90.f), 1.f, 1.f, 100.f);
     vp.inv_proj[1][1] *= -1;
     vp.inv_view = glm::inverse(vp.inv_view);
     vp.inv_proj = glm::inverse(vp.inv_proj);
@@ -454,9 +454,16 @@ void App::LoadSceneFromFile(const std::string& path)
         for (auto &mesh: this->scene.meshes) {
             // TLAS CONSTRUCTION
             VkAccelerationStructureInstanceKHR ray_instance{};
-            glm::mat4 model_transform = static_cast<glm::mat4>(glm::angleAxis(glm::radians(180.f), glm::vec3(0.f, 1.f, 0.f)));
-            glm::mat3x4 reduced_model_transform = static_cast<glm::mat3x4>(model_transform);
-            memcpy(&ray_instance.transform.matrix, &reduced_model_transform, sizeof(glm::mat3x4));
+            glm::vec3 translation = glm::vec3{0.0f, 0.0f, 0.0f};
+            glm::mat4 transform = glm::translate(glm::mat4{1.0f}, translation);
+            glm::mat3x4 transform_matrix = glm::mat3x4(transform);
+            VkTransformMatrixKHR vk_transform_matrix;
+            for (int i = 0; i < 3; ++i) {
+                for (int j = 0; j < 4; ++j) {
+                    vk_transform_matrix.matrix[i][j] = transform_matrix[i][j];
+                }
+            }
+            ray_instance.transform = vk_transform_matrix;
 
             ray_instance.instanceCustomIndex = index + this->blas_acceleration_structures.size();
             ray_instance.accelerationStructureReference = this->blas_acceleration_structures[index].buffer->device_address;
