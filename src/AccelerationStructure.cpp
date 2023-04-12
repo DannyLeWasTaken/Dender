@@ -6,7 +6,9 @@
 #include <vuk/Buffer.hpp>
 #include <vuk/AllocatorHelpers.hpp>
 #include <vuk/CommandBuffer.hpp>
+#include <vuk/Partials.hpp>
 #include <iostream>
+#include <VkBootstrap.h>
 
 AccelerationStructure::AccelerationStructure(
         std::optional<vuk::Allocator> inAllocator):
@@ -16,12 +18,11 @@ AccelerationStructure::AccelerationStructure(
 }
 
 
-AccelerationStructure::SceneAccelerationStructure AccelerationStructure::build_blas(
+AccelerationStructure::BLASSceneAccelerationStructure AccelerationStructure::build_blas(
         const std::vector<AccelerationStructure::BlasInput>& blas_input,
-        VkBuildAccelerationStructureFlagsKHR flags) {
+        VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR) {
 
-    std::vector<BuildAccelerationStructure> blases;
-    std::vector<vuk::Unique<vuk::Buffer>> blas_buffers;
+    std::vector<BlasAccelerationStructure> blases;
 
     uint32_t max_scratch_size{0};
     uint32_t as_total_size{0};
@@ -80,7 +81,7 @@ AccelerationStructure::SceneAccelerationStructure AccelerationStructure::build_b
         blas_ci.buffer = blas_buffer->buffer;
         blas_ci.offset = blas_buffer->offset;
 
-        BuildAccelerationStructure build_acceleration_structure {
+        BlasAccelerationStructure build_acceleration_structure {
                 .build_info = build_info,
                 .size_info  = size_info,
                 .range_info = range_info,
@@ -105,7 +106,7 @@ AccelerationStructure::SceneAccelerationStructure AccelerationStructure::build_b
 
     // Update build information
     for (uint32_t i = 0; i < blases.size(); i++) {
-        BuildAccelerationStructure& build_acceleration_structure = blases[i];
+        BlasAccelerationStructure& build_acceleration_structure = blases[i];
         build_acceleration_structure.build_info.srcAccelerationStructure = VK_NULL_HANDLE;
         build_acceleration_structure.build_info.dstAccelerationStructure =
                 *build_acceleration_structure.as;
@@ -145,6 +146,7 @@ AccelerationStructure::SceneAccelerationStructure AccelerationStructure::build_b
                     });
 
 
+            vuk::Query query;
 
             // TODO: THERE IS A 100% MORE INTELLIGENT WAY TO BUILD YOUR BLASES WITHOUT HAVING TO CREATE
             //  A FUCKING RENDERPASS FOR EACH ACCELERATION STRUCTURE.
@@ -172,44 +174,22 @@ AccelerationStructure::SceneAccelerationStructure AccelerationStructure::build_b
                     }
                 });
             }
-
-            /**
-            build_as.add_pass( {
-                .resources { "blas_buffer"_buffer >> vuk::eAccelerationStructureBuildWrite, },
-                .execute = [blases = index_blas](vuk::CommandBuffer& command_buffer) mutable {
-                    for (uint32_t i = 0; i < blases.size(); i++) {
-                        auto& blas = blases[i];
-                        auto& range_info = blas.range_info;
-                        auto& build_info = blas.build_info;
-                        // Deal with dangling pointer here since ptr do not copy over their values
-                        build_info.pGeometries = &blases[i].as_geometry;
-
-                        const auto* pblas_offset = &range_info;
-                        command_buffer.build_acceleration_structures(
-                                1,
-                                &build_info,
-                                &pblas_offset);
-
-                    }
-                }
-            } );
-            **/
-
             indices.clear();
             batch_size = 0;
         }
     }
 
-    return SceneAccelerationStructure {
+    return BLASSceneAccelerationStructure {
         .graph = std::move(build_as),
         .acceleration_structures = std::move(blases)
     };
 }
 
-void AccelerationStructure::create_blas(vuk::CommandBuffer &command_buffer,
-                                        std::vector<uint32_t> indices,
-                                        std::vector<BuildAccelerationStructure> &build_as,
+void AccelerationStructure::create_blas(vuk::CommandBuffer& command_buffer,
+                                        const std::vector<uint32_t>& indices,
+                                        std::vector<BlasAccelerationStructure> &build_as,
                                         VkDeviceAddress scratch_address) {
+
     for (const auto& index: indices) {
         VkAccelerationStructureCreateInfoKHR create_info{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR};
         create_info.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
@@ -218,6 +198,96 @@ void AccelerationStructure::create_blas(vuk::CommandBuffer &command_buffer,
     }
 }
 
-void AccelerationStructure::build_tlas() {
+AccelerationStructure::TlasSceneAccelerationStructure AccelerationStructure::build_tlas(std::vector<VkAccelerationStructureInstanceKHR>& instances )
+{
+    std::vector<vuk::Unique<vuk::Buffer>*> blas_buffers;
+    vuk::Unique<VkAccelerationStructureKHR> tlas;
+    uint32_t instances_count = instances.size();
 
+    std::cout << "Total instances: " << instances.size() << std::endl;
+
+    // Create buffer that stores all instances
+    auto [instances_buffer, instances_future] = vuk::create_buffer(
+            *allocator,
+            vuk::MemoryUsage::eCPUtoGPU,
+            vuk::DomainFlagBits::eTransferOnGraphics,
+            std::span(instances)
+            );
+
+
+    // TLAS creation
+
+    // A wrapper that points to uploaded instances
+    VkAccelerationStructureGeometryInstancesDataKHR instance_vk { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR };
+    instance_vk.data.deviceAddress = instances_buffer->device_address;
+
+    // Put created instances information into a VkAccelerationStructureGeometryKHR
+    VkAccelerationStructureGeometryKHR as_geometry { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
+    as_geometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+    as_geometry.geometry.instances = instance_vk;
+
+    // Find sizes
+    VkAccelerationStructureBuildGeometryInfoKHR tlas_build_info{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
+    tlas_build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+    tlas_build_info.geometryCount = 1;
+    tlas_build_info.pGeometries = &as_geometry;
+    tlas_build_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+    tlas_build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+    tlas_build_info.srcAccelerationStructure = VK_NULL_HANDLE;
+
+
+    VkAccelerationStructureBuildSizesInfoKHR tlas_size_info { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR };
+    context.vkGetAccelerationStructureBuildSizesKHR(
+            allocator->get_context().device, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+            &tlas_build_info, &instances_count, &tlas_size_info);
+
+    // Allocate the TLAS object and a buffer that holds the data
+    VkAccelerationStructureCreateInfoKHR tlas_ci{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR };
+    tlas_ci.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+    tlas_ci.size = tlas_size_info.accelerationStructureSize;
+
+    auto tlas_buffer = *vuk::allocate_buffer(*allocator, { .mem_usage = vuk::MemoryUsage::eGPUonly, .size = tlas_size_info.accelerationStructureSize });
+    tlas_ci.buffer = tlas_buffer->buffer;
+    tlas_ci.offset = tlas_buffer->offset;
+
+    tlas = vuk::Unique<VkAccelerationStructureKHR>(*allocator);
+    allocator->allocate_acceleration_structures({ &*tlas, 1 }, { &tlas_ci, 1 });
+
+    // Allocate scratch memory & update build info
+    auto tlas_scratch_buffer =
+            *vuk::allocate_buffer(*allocator, vuk::BufferCreateInfo{ .mem_usage = vuk::MemoryUsage::eGPUonly, .size = tlas_size_info.buildScratchSize });
+    tlas_build_info.scratchData.deviceAddress = tlas_scratch_buffer->device_address;
+    tlas_build_info.dstAccelerationStructure  = *tlas;
+
+    TlasAccelerationStructure tlases_acceleration_structure {
+        .instances = instances,
+        .build_info = tlas_build_info,
+        .size_info = tlas_size_info,
+        .as = std::move(tlas),
+        .instances_buffer = std::move(instances_buffer),
+        .buffer = std::move(tlas_buffer),
+    };
+
+    vuk::RenderGraph as_build("tlas_as_build");
+    as_build.attach_buffer("tlas_buffer", *tlases_acceleration_structure.buffer );
+    as_build.add_pass({
+        .resources = {
+                "tlas_buffer"_buffer >> vuk::eAccelerationStructureBuildWrite
+        },
+        .execute = [instances_count, as_geometry, tlas_build_info = tlases_acceleration_structure.build_info](vuk::CommandBuffer& command_buffer) mutable {
+            // Make a copy of the top AS geometry to not dangle
+            tlas_build_info.pGeometries = &as_geometry;
+
+            // Describe what is being built
+            VkAccelerationStructureBuildRangeInfoKHR tlas_offset{ instances_count , 0, 0, 0 };
+            const VkAccelerationStructureBuildRangeInfoKHR* ptlas_offset = &tlas_offset;
+            command_buffer.build_acceleration_structures(1, &tlas_build_info, &ptlas_offset);
+        }
+    });
+
+
+    return AccelerationStructure::TlasSceneAccelerationStructure {
+        .graph = std::move(as_build),
+        .acceleration_structure = std::move(tlases_acceleration_structure)
+    };
 }

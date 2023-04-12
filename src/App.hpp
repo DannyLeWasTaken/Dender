@@ -35,6 +35,7 @@ public:
     VkPhysicalDevice                                physical_device;
     VkQueue                                         graphics_queue;
     VkQueue                                         transfer_queue;
+    VkQueue                                         compute_queue;
     std::optional<vuk::Context>                     context;
     std::optional<vuk::DeviceSuperFrameResource>    vuk_device_sf_resource;
     std::optional<vuk::Allocator>                   vuk_allocator;
@@ -52,7 +53,8 @@ public:
 
     Asset::Scene scene;
     AccelerationStructure* acceleration_structure;
-    std::vector<AccelerationStructure::BuildAccelerationStructure> scene_acceleration_structures;
+    std::vector<AccelerationStructure::BlasAccelerationStructure> blas_acceleration_structures;
+    AccelerationStructure::TlasAccelerationStructure tlas_acceleration_structure;
 
     // FUNCTIONS
     App();

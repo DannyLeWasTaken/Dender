@@ -2,6 +2,7 @@
 // Created by Danny on 2023-01-13.
 //
 
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "App.hpp"
 #include "GlfwHelper.hpp"
 #include "utils.hpp"
@@ -114,6 +115,8 @@ App::App() {
     transfer_queue = vkbDevice.get_queue(vkb::QueueType::transfer).value();
     auto transfer_queue_family_index = vkbDevice.get_queue_index(vkb::QueueType::transfer).value();
     device = vkbDevice.device;
+    compute_queue = vkbDevice.get_queue(vkb::QueueType::compute).value();
+    auto computer_queue_family_index = vkbDevice.get_queue_index(vkb::QueueType::compute).value();
 
     std::cout << "3" << std::endl;
 
@@ -136,8 +139,8 @@ App::App() {
             physical_device,
             graphics_queue,
             graphics_queue_family_index,
-            VK_NULL_HANDLE,
-            VK_QUEUE_FAMILY_IGNORED,
+            compute_queue,
+            computer_queue_family_index,
             transfer_queue,
             transfer_queue_family_index,
             fps
@@ -219,10 +222,14 @@ void App::cleanup() {
         }
     }
 
-    for (auto& as: this->scene_acceleration_structures) {
+    for (auto& as: this->blas_acceleration_structures) {
         as.as.reset();
         as.buffer.reset();
     }
+    this->tlas_acceleration_structure.as.reset();
+    this->tlas_acceleration_structure.buffer.reset();
+    this->tlas_acceleration_structure.instances_buffer.reset();
+
     std::cout << "Freed all textures" << std::endl;
     present_ready.reset();
     std::cout << "1" << std::endl;
@@ -259,11 +266,16 @@ void App::setup() {
     }
 
     // Describe the mesh
-    vuk::PipelineBaseCreateInfo pci;
-    pci.add_glsl(util::read_entire_file("C:/Users/Danny/CLionProjects/Dender/src/Shaders/triangle.vert"), "vert");
-    pci.add_glsl(util::read_entire_file("C:/Users/Danny/CLionProjects/Dender/src/Shaders/triangle.frag"), "frag");
-
-    context->create_named_pipeline("triangle", pci);
+    {
+        vuk::PipelineBaseCreateInfo pci;
+        pci.add_glsl(util::read_entire_file( "C:/Users/Danny/CLionProjects/Dender/src/Shaders/rt.rgen"),  "rt.rgen");
+        pci.add_glsl(util::read_entire_file( "C:/Users/Danny/CLionProjects/Dender/src/Shaders/rt.rmiss"), "rt.rmiss");
+        pci.add_glsl(util::read_entire_file( "C:/Users/Danny/CLionProjects/Dender/src/Shaders/rt.rchit"), "rt.rchit");
+        // new for RT: a hit group is a collection of shaders identified by their index in the PipelineBaseCreateInfo
+        // 2 => rt.rchit
+        pci.add_hit_group(vuk::HitGroup{ .type = vuk::HitGroupType::eTriangles, .closest_hit = 2 });
+        context->create_named_pipeline("raytracing", pci);
+    }
 }
 
 void App::loop() {
@@ -290,100 +302,81 @@ void App::render(vuk::Compiler& compiler) {
     bundle = *vuk::acquire_one(*context, swapchain, (*present_ready)[context->get_frame_count() % 3],
                                (*render_complete)[context->get_frame_count() % 3]);
 
-    /**
-    std::vector<uint64_t> buffer_addresses;
-    buffer_addresses.insert(buffer_addresses.end(), this->scene->m_bda.begin(), this->scene->m_bda.end());
-    auto [bda_buf, bda_fut] = vuk::create_buffer(
-            frame_allocator,
-            vuk::MemoryUsage::eGPUonly,
-            vuk::DomainFlagBits::eTransferOnGraphics,
-            std::span(this->scene->m_bda)
-    );
-    auto ubo_buf = *bda_buf;
-    **/
+    vuk::Future target;
+    {
+        std::shared_ptr<vuk::RenderGraph> rg(std::make_shared<vuk::RenderGraph>("Dender"));
+        rg->attach_swapchain("_swp", swapchain);
+        rg->clear_image("_swp",
+                        "example_target_image",
+                        vuk::ClearColor{0.3f, 0.5f, 0.3f, 1.0f});
+        target = vuk::Future{std::move(rg), "example_target_image"};
+    }
 
-    // This struct will represent the view-projection transform used for the cube
     struct VP {
-        glm::mat4 view;
-        glm::mat4 proj;
-    } vp{};
-    // Fill the view matrix, looking a bit from top to the center
-    vp.view = glm::lookAt(glm::vec3(0, 1.5, 3.5), glm::vec3(0), glm::vec3(0, 1, 0));
-    // Fill the projection matrix, standard perspective matrix
-    vp.proj = glm::perspective(glm::degrees(70.f), 1.f, 1.f, 100.f);
-    vp.proj[1][1] *= -1;
-    // Allocate and transfer view-projection transform
-    auto [buboVP, uboVP_fut] = create_buffer(frame_allocator, vuk::MemoryUsage::eCPUtoGPU, vuk::DomainFlagBits::eTransferOnGraphics, std::span(&vp, 1));
-    // since this memory is CPU visible (MemoryUsage::eCPUtoGPU), we don't need to wait for the future to complete
+        glm::mat4 inv_view;
+        glm::mat4 inv_proj;
+    } vp;
+    vp.inv_view = glm::lookAt(glm::vec3(0, 1.5, 3.5), glm::vec3(0), glm::vec3(0, 1, 0));
+    vp.inv_proj = glm::perspective(glm::degrees(70.f), 1.f, 1.f, 100.f);
+    vp.inv_proj[1][1] *= -1;
+    vp.inv_view = glm::inverse(vp.inv_view);
+    vp.inv_proj = glm::inverse(vp.inv_proj);
+
+    auto [buboVP, uboVP_fut] = vuk::create_buffer(frame_allocator,
+                                                  vuk::MemoryUsage::eCPUtoGPU,
+                                                  vuk::DomainFlagBits::eTransferOnGraphics,
+                                                  std::span(&vp, 1));
     auto uboVP = *buboVP;
 
-    auto rendererName = vuk::Name("01_triangle");
+    vuk::RenderGraph raytrace_rg("12");
+    raytrace_rg.attach_in("12_rt", std::move(target));
+    raytrace_rg.attach_buffer("tlas", *this->tlas_acceleration_structure.buffer);
 
-    vuk::RenderGraph renderGraph("runner");
-    renderGraph.attach_swapchain("_swp", swapchain);
-    renderGraph.clear_image("_swp", rendererName, vuk::ClearColor{0.3f, 0.5f, 0.3f, 1.0f});
+    auto tlas = &this->tlas_acceleration_structure.as;
 
-    vuk::RenderGraph rg("01");
-    /*
-    rg.add_pass({
-        .resources = {"01_triangle"_image >> vuk::eColorWrite >> "01_triangle_final"},
-        .execute = [](vuk::CommandBuffer& commandBuffer) {
-            commandBuffer.set_viewport(0, vuk::Rect2D::framebuffer());
-            commandBuffer.set_scissor(0, vuk::Rect2D::framebuffer());
-            commandBuffer
-                .set_rasterization({})
-                .set_color_blend("01_triangle", {})
-                .bind_graphics_pipeline("triangle")
-                .draw(3, 1, 0, 0);
-        }
+    raytrace_rg.attach_image("12_rt_target",
+                             vuk::ImageAttachment{
+        .format = vuk::Format::eR8G8B8A8Unorm,
+        .sample_count = vuk::SampleCountFlagBits::e1,
+        .layer_count = 1
     });
-    */
+    raytrace_rg.inference_rule("12_rt_target",
+                               vuk::same_shape_as("12_rt"));
+    raytrace_rg.add_pass({
+        .resources = { "12_rt_target"_image >> vuk::eRayTracingWrite,
+                       "tlas"_buffer >> vuk::eRayTracingRead },
+        .execute = [uboVP,
+                    tlas = &this->tlas_acceleration_structure.as](vuk::CommandBuffer& command_buffer) {
+        command_buffer.bind_acceleration_structure(0, 0, tlas->get())
+        .bind_image(0, 1, "12_rt_target")
+        .bind_buffer(0, 2, uboVP)
+        .bind_ray_tracing_pipeline("raytracing");
+        // Launch one ray per pixel in the intermediate image
+        auto extent = command_buffer.get_resource_image_attachment("12_rt_target")->extent;
+        command_buffer.trace_rays(extent.extent.width, extent.extent.height, 1);
+    }});
 
-    rg.attach_in("01_triangle",
-                 std::move(vuk::Future{ std::make_shared<vuk::RenderGraph>(std::move(renderGraph)),
-                                        rendererName}));
+    raytrace_rg.add_pass({
+        .resources = { "12_rt_target+"_image >> vuk::eTransferRead,
+                       "12_rt"_image >> vuk::eTransferWrite >> "12_rt_final" },
+        .execute = [](vuk::CommandBuffer& command_buffer) {
+            vuk::ImageBlit blit;
+            blit.srcSubresource.aspectMask = vuk::ImageAspectFlagBits::eColor;
+            blit.srcSubresource.baseArrayLayer = 0;
+            blit.srcSubresource.layerCount = 1;
+            blit.srcSubresource.mipLevel = 0;
+            blit.dstSubresource = blit.srcSubresource;
+            auto extent = command_buffer.get_resource_image_attachment("12_rt_target+")->extent;
+            blit.srcOffsets[1] = vuk::Offset3D{ static_cast<int>(extent.extent.width), static_cast<int>(extent.extent.height), 1 };
+            blit.dstOffsets[1] = blit.srcOffsets[1];
+            command_buffer.blit_image("12_rt_target+", "12_rt", blit, vuk::Filter::eNearest);
+        }});
 
-    auto gltf_scene = this->scene;
-    rg.add_pass({
-       .resources = {
-               "01_triangle"_image >> vuk::eColorWrite >> "01_triangle_final"
-       },
-       .execute = [uboVP, gltf_scene](vuk::CommandBuffer& command_buffer) {
+    vuk::Future rendergraph_result = vuk::Future {
+        std::make_unique<vuk::RenderGraph>(std::move(raytrace_rg)), "12_rt_final"
+    };
 
-           command_buffer.set_viewport(0, vuk::Rect2D::framebuffer())
-           .set_scissor(0, vuk::Rect2D::framebuffer())
-           .set_rasterization({})
-           .set_color_blend("01_triangle", {})
-           .bind_buffer(0, 0, uboVP);
-           auto* model = command_buffer.map_scratch_buffer<glm::mat4>(0, 1);
-           *model = static_cast<glm::mat4>(glm::angleAxis(glm::radians(360.f), glm::vec3(0.f, 1.f, 0.f)));
-
-           for (int i = 0; i < gltf_scene.meshes.size(); i++) {
-               auto& mesh = gltf_scene.meshes[i];
-			   vuk::VertexInputAttributeDescription vertex_attributes{};
-			   vertex_attributes.format = mesh.positions.format;
-			   vertex_attributes.offset = mesh.positions.offset;
-			   vertex_attributes.binding = 0;
-			   vertex_attributes.location = 0;
-
-               command_buffer.bind_vertex_buffer(
-                       0,
-                       **mesh.positions.buffer->vk_buffer,
-						std::span{&vertex_attributes, 1},
-                       mesh.positions.stride
-               )
-               .bind_index_buffer(
-                       **mesh.indices.buffer->vk_buffer,
-                       mesh.indices.format
-               )
-               .bind_graphics_pipeline("triangle");
-               command_buffer.draw_indexed(mesh.indices.count, 1, mesh.indices.first_index, 0, i);
-           }
-       }
-    });
-
-    auto fut = vuk::Future{std::make_unique<vuk::RenderGraph>(std::move(rg)), "01_triangle_final"};
-    auto ptr = fut.get_render_graph();
+    auto ptr = rendergraph_result.get_render_graph();
     auto erg = *compiler.link(std::span{&ptr, 1}, {});
     auto result = *vuk::execute_submit(frame_allocator, std::move(erg), std::move(bundle));
     vuk::present_to_one(*context, std::move(result));
@@ -400,41 +393,6 @@ void App::render(vuk::Compiler& compiler) {
 
 void App::LoadSceneFromFile(const std::string& path)
 {
-    /**
-    // Load scene
-    auto scene = new Scene(path);
-    std::cout << "Running - Allocation" << std::endl;
-    Scenes.push_back(scene);
-
-    // Create buffers
-    auto [vert_buf, vert_fut] = vuk::create_buffer(*vuk_allocator,
-                       vuk::MemoryUsage::eGPUonly,
-                       vuk::DomainFlagBits::eTransferOnGraphics,
-                       std::span(scene->m_Vertices));
-    m_VertexBuffer = std::move(vert_buf);
-    vuk_futures->emplace_back(std::move(vert_fut));
-
-    auto [ind_buf, ind_fut] = vuk::create_buffer(*vuk_allocator,
-                                                   vuk::MemoryUsage::eGPUonly,
-                                                   vuk::DomainFlagBits::eTransferOnGraphics,
-                                                   std::span(scene->m_Indices));
-    m_IndexBuffer = std::move(ind_buf);
-    vuk_futures->emplace_back(std::move(ind_fut));
-
-
-    auto [nrm_buf, nrm_fut] = vuk::create_buffer(*vuk_allocator,
-                                                 vuk::MemoryUsage::eGPUonly,
-                                                 vuk::DomainFlagBits::eTransferOnGraphics,
-               m_buf);
-                                  std::span(scene->m_Normals));
-    m_IndexBuffer = std::move(nr    vuk_futures->emplace_back(std::move(nrm_fut));
-
-    auto [uv_buf, uv_fut] = vuk::create_buffer(*vuk_allocator,
-                                                 vuk::MemoryUsage::eGPUonly,
-                                                 vuk::DomainFlagBits::eTransferOnGraphics,
-                                                 std::span(scene->m_texCoords));
-    **/
-
     std::filesystem::path filePath = std::filesystem::path{path};
     auto loaded_scene = this->gltf_loader.load_file(filePath, *this->vuk_allocator);
     //this->scene = static_cast<RenderScene>(this->gltf_loader.load_file(filePath, *this->vuk_allocator));
@@ -469,9 +427,9 @@ void App::LoadSceneFromFile(const std::string& path)
 
         // Find sizes
         VkAccelerationStructureBuildRangeInfoKHR build_range_info;
-        build_range_info.firstVertex = 0;
+        build_range_info.firstVertex = mesh.positions.offset / mesh.positions.stride;
         build_range_info.primitiveCount = mesh.indices.count / 3;
-        build_range_info.primitiveOffset = 0;
+        build_range_info.primitiveOffset = mesh.positions.offset;
         build_range_info.transformOffset = 0;
 
         AccelerationStructure::BlasInput blas_input;
@@ -480,26 +438,48 @@ void App::LoadSceneFromFile(const std::string& path)
 
         blas_inputs.emplace_back(blas_input);
     }
-    AccelerationStructure::SceneAccelerationStructure rendergraph_as = this->acceleration_structure->build_blas(
+    AccelerationStructure::BLASSceneAccelerationStructure blas_rendergraph = this->acceleration_structure->build_blas(
             blas_inputs,
             VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
     );
+    for (auto& as: blas_rendergraph.acceleration_structures) {
+        this->blas_acceleration_structures.emplace_back(std::move(as));
+    }
+
+
+    // Handle Tlas creation
+    std::vector<VkAccelerationStructureInstanceKHR> tlas;
+    {
+        uint64_t index = this->blas_acceleration_structures.size() - blas_inputs.size();
+        for (auto &mesh: this->scene.meshes) {
+            // TLAS CONSTRUCTION
+            VkAccelerationStructureInstanceKHR ray_instance{};
+            glm::mat4 model_transform = static_cast<glm::mat4>(glm::angleAxis(glm::radians(180.f), glm::vec3(0.f, 1.f, 0.f)));
+            glm::mat3x4 reduced_model_transform = static_cast<glm::mat3x4>(model_transform);
+            memcpy(&ray_instance.transform.matrix, &reduced_model_transform, sizeof(glm::mat3x4));
+
+            ray_instance.instanceCustomIndex = index + this->blas_acceleration_structures.size();
+            ray_instance.accelerationStructureReference = this->blas_acceleration_structures[index].buffer->device_address;
+            ray_instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+            ray_instance.mask  = 0xFF;
+            ray_instance.instanceShaderBindingTableRecordOffset = 0;
+            tlas.emplace_back(ray_instance);
+            index++;
+        }
+    }
+
+    AccelerationStructure::TlasSceneAccelerationStructure tlas_rendergraph = this->acceleration_structure->build_tlas(tlas);
+    this->tlas_acceleration_structure = std::move(tlas_rendergraph.acceleration_structure);
+
+    // Enqueue all vuk futures
     this->vuk_futures->emplace_back(
-            vuk::Future(std::make_shared<vuk::RenderGraph>(std::move(rendergraph_as.graph)),
-                    "blas_buffer+")
-            );
+            vuk::Future(std::make_shared<vuk::RenderGraph>(std::move(blas_rendergraph.graph)),
+                        "blas_buffer+")
+    );
 
-    // Handle TLAS creation
-    for (auto& mesh: this->scene.meshes) {
+    this->vuk_futures->emplace_back(
+            vuk::Future(std::make_shared<vuk::RenderGraph>(std::move(tlas_rendergraph.graph)),
+                        "tlas_buffer+")
+    );
 
-    }
-
-    /**
-    this->scene_acceleration_structures.insert(this->scene_acceleration_structures.begin(),
-                                                rendergraph_as.acceleration_structures.begin(),
-                                                rendergraph_as.acceleration_structures.end());
-    **/
-    for (auto& as: rendergraph_as.acceleration_structures) {
-        this->scene_acceleration_structures.emplace_back(std::move(as));
-    }
 }

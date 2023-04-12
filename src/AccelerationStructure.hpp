@@ -22,7 +22,7 @@ public:
         std::vector<VkAccelerationStructureBuildRangeInfoKHR> as_build_offset_info;
         VkBuildAccelerationStructureFlagsKHR                  flags{0};
     };
-    struct BuildAccelerationStructure
+    struct BlasAccelerationStructure
     {
 		/// @brief Class containing everything needed for the acceleration structure
         VkAccelerationStructureBuildGeometryInfoKHR     build_info{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR};
@@ -31,23 +31,37 @@ public:
         vuk::Unique<VkAccelerationStructureKHR>         as; // result acceleration structure
         vuk::Unique<vuk::Buffer>                        buffer;
     };
-    struct SceneAccelerationStructure {
+    struct BLASSceneAccelerationStructure {
         vuk::RenderGraph graph;
-        std::vector<BuildAccelerationStructure> acceleration_structures;
+        std::vector<BlasAccelerationStructure> acceleration_structures;
+    };
+
+    struct TlasAccelerationStructure {
+        std::vector<VkAccelerationStructureInstanceKHR> instances;
+        VkAccelerationStructureBuildGeometryInfoKHR     build_info{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR};
+        VkAccelerationStructureBuildSizesInfoKHR        size_info{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR};
+        vuk::Unique<VkAccelerationStructureKHR>         as;
+        vuk::Unique<vuk::Buffer>                        instances_buffer;
+        vuk::Unique<vuk::Buffer>                        buffer;
+    };
+
+    struct TlasSceneAccelerationStructure {
+        vuk::RenderGraph graph;
+        TlasAccelerationStructure acceleration_structure;
     };
 
     explicit AccelerationStructure(std::optional<vuk::Allocator> allocator);
     ~AccelerationStructure();
 
-    SceneAccelerationStructure build_blas(const std::vector<AccelerationStructure::BlasInput>& blas_input,
-                                VkBuildAccelerationStructureFlagsKHR flags);
-    void create_blas(vuk::CommandBuffer& command_buffer,
-                     std::vector<uint32_t> indices,
-                     std::vector<BuildAccelerationStructure>& build_as,
+    BLASSceneAccelerationStructure build_blas(const std::vector<AccelerationStructure::BlasInput>& blas_input,
+                                              VkBuildAccelerationStructureFlagsKHR flags);
+    static void create_blas(vuk::CommandBuffer& command_buffer,
+                     const std::vector<uint32_t>& indices,
+                     std::vector<BlasAccelerationStructure>& build_as,
                      VkDeviceAddress scratch_address);
 
-    void build_tlas(
-
+    TlasSceneAccelerationStructure build_tlas(
+            std::vector<VkAccelerationStructureInstanceKHR>& build_acceleration_structure
             );
 
     void InitalizeAS();

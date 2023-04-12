@@ -98,7 +98,13 @@ void fast_gltf_loader::load_mesh(std::unique_ptr<fastgltf::Asset> gltf_asset, fa
 std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fastgltf::Asset>& gltf_asset,
 									  Asset::Scene* scene,
 									  fastgltf::Primitive& primitive) {
-	Asset::Mesh out_mesh{};
+    Asset::Mesh out_mesh{};
+
+    if (primitive.attributes.find("POSITION") == primitive.attributes.end())
+        return std::pair<Asset::Mesh, bool>{out_mesh, false};
+
+    if (!primitive.indicesAccessor.has_value())
+        return std::pair<Asset::Mesh, bool>{out_mesh, false};
 
 	auto get_internal_format = [](
 									   fastgltf::ComponentType componentType,

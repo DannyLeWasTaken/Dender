@@ -51,6 +51,7 @@ namespace util
     {
         std::ostringstream buf;
         std::ifstream input(path.c_str());
+        std::cout << path << std::endl;
         assert(input);
         buf << input.rdbuf();
         return buf.str();
