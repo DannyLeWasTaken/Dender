@@ -19,13 +19,14 @@ namespace Asset {
 
 	struct BufferView {
 		uint64_t count;
-		uint64_t offset;
+		uint64_t offset_buffer_view;
+        uint64_t offset_accessor;
 		uint64_t stride;
 		vuk::Format format;
 		Buffer* buffer;
 	};
 	struct IndexView : BufferView {
-		vuk::IndexType format;
+		VkIndexType format;
 		uint64_t first_index;
 	};
 	struct Image {

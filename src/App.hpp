@@ -19,6 +19,7 @@
 #include "vuk/SampledImage.hpp"
 #include "vuk/resources/DeviceFrameResource.hpp"
 #include "./Assets/fast_gltf_loader.hpp"
+#include "./camera.hpp"
 #include "AccelerationStructure.hpp"
 
 class Scene;
@@ -52,6 +53,7 @@ public:
     vkb::Device   vkbDevice;
 
     Asset::Scene scene;
+    camera camera_obj;
     AccelerationStructure* acceleration_structure;
     std::vector<AccelerationStructure::BlasAccelerationStructure> blas_acceleration_structures;
     AccelerationStructure::TlasAccelerationStructure tlas_acceleration_structure;

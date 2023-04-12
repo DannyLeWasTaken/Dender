@@ -56,13 +56,14 @@ Asset::Scene fast_gltf_loader::load_file(const std::filesystem::path& path, vuk:
 						   [](auto& arg) {},
 						   [&](fastgltf::sources::Vector& vector) {
 							   //std::cout << vector.bytes.size() << std::endl;
-							   auto [vk_buffer, future] = vuk::create_buffer(allocator,
+							   auto [vuk_buffer, future] = vuk::create_buffer(allocator,
 																			  vuk::MemoryUsage::eGPUonly,
 																			  vuk::DomainFlagBits::eTransferOnGraphics,
 																			  std::span(vector.bytes));
+                               allocator.get_context().set_name(vuk_buffer->buffer, "gltf_buffer");
 							   Asset::Buffer* buffer_asset = new Asset::Buffer {
 									   .data = vector.bytes,
-									   .vk_buffer = std::move(vk_buffer),
+									   .vk_buffer = std::move(vuk_buffer),
 									   .future = future
 							   };
 
@@ -100,11 +101,14 @@ std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fa
 									  fastgltf::Primitive& primitive) {
     Asset::Mesh out_mesh{};
 
-    if (primitive.attributes.find("POSITION") == primitive.attributes.end())
+    if (primitive.attributes.find("POSITION") == primitive.attributes.end()) {
+        std::cout << "[WARNINGS]: FAILED TO LOAD MESH PROPERLY" << std::endl;
         return std::pair<Asset::Mesh, bool>{out_mesh, false};
-
-    if (!primitive.indicesAccessor.has_value())
+    }
+    if (!primitive.indicesAccessor.has_value()) {
+        std::cout << "[WARNING]: FAILED TO LOAD MESH PROPERLY" << std::endl;
         return std::pair<Asset::Mesh, bool>{out_mesh, false};
+    }
 
 	auto get_internal_format = [](
 									   fastgltf::ComponentType componentType,
@@ -167,10 +171,11 @@ std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fa
 	};
 	auto get_index_format = [](fastgltf::ComponentType format) {
 		switch (format) {
-			case fastgltf::ComponentType::UnsignedInt:   return vuk::IndexType::eUint32;
-			case fastgltf::ComponentType::UnsignedShort: return vuk::IndexType::eUint16;
-			case fastgltf::ComponentType::UnsignedByte:  return vuk::IndexType::eUint8EXT;
-			default: return vuk::IndexType::eNoneKHR;
+            case fastgltf::ComponentType::UnsignedInt:   return VK_INDEX_TYPE_UINT32;
+			case fastgltf::ComponentType::UnsignedShort: return VK_INDEX_TYPE_UINT16;
+			case fastgltf::ComponentType::UnsignedByte:  return VK_INDEX_TYPE_UINT8_EXT;
+
+			default: return VK_INDEX_TYPE_NONE_KHR;
 		}
 	};
 
@@ -185,7 +190,8 @@ std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fa
 		auto offset = position_accessor.byteOffset;
 
 		position_buffer.count  = position_accessor.count;
-		position_buffer.offset = offset;
+ 	 	position_buffer.offset_accessor    = position_accessor.byteOffset;
+		position_buffer.offset_buffer_view = position_view.byteOffset;
 		position_buffer.format = get_internal_format(position_accessor.componentType,
 													 position_accessor.type);
 		std::cout << scene->buffers.size() << " | " << position_accessor.bufferViewIndex.value() << std::endl;
@@ -199,6 +205,9 @@ std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fa
 			position_buffer.stride =
 					fastgltf::getElementByteSize(position_accessor.type, position_accessor.componentType);
 		}
+        std::cout << "Position buffer ID: " << position_accessor.bufferViewIndex.value() << std::endl;
+        std::cout << "Position buffer offset: " << position_accessor.byteOffset
+        + position_view.byteOffset << std::endl;
 	}
 
 	{
@@ -217,6 +226,9 @@ std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fa
 											 );
 		index_buffer.format      = get_index_format(indices_accessor.componentType);
 		index_buffer.buffer      = scene->buffers[indices_accessor.bufferViewIndex.value()];
+        index_buffer.offset_accessor = indices_accessor.byteOffset;
+        index_buffer.offset_buffer_view = indices_view.byteOffset;
+        std::cout << "Index buffer ID: " << indices_accessor.bufferViewIndex.value() << std::endl;
 	}
 
 	{

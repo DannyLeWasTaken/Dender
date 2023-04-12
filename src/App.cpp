@@ -121,17 +121,8 @@ App::App() {
     std::cout << "3" << std::endl;
 
     vuk::ContextCreateParameters::FunctionPointers fps;
-#define VUK_EX_LOAD_FP(name) fps.name = (PFN_##name)vkGetDeviceProcAddr(device, #name);
-    VUK_EX_LOAD_FP(vkSetDebugUtilsObjectNameEXT);
-    VUK_EX_LOAD_FP(vkCmdBeginDebugUtilsLabelEXT);
-    VUK_EX_LOAD_FP(vkCmdEndDebugUtilsLabelEXT);
-    VUK_EX_LOAD_FP(vkCmdBuildAccelerationStructuresKHR);
-    VUK_EX_LOAD_FP(vkGetAccelerationStructureBuildSizesKHR);
-    VUK_EX_LOAD_FP(vkCmdTraceRaysKHR);
-    VUK_EX_LOAD_FP(vkCreateAccelerationStructureKHR);
-    VUK_EX_LOAD_FP(vkDestroyAccelerationStructureKHR);
-    VUK_EX_LOAD_FP(vkGetRayTracingShaderGroupHandlesKHR);
-    VUK_EX_LOAD_FP(vkCreateRayTracingPipelinesKHR);
+    fps.vkGetInstanceProcAddr = vkbInstance.fp_vkGetInstanceProcAddr;
+    fps.vkGetDeviceProcAddr   = vkbInstance.fp_vkGetDeviceProcAddr;
 
     context.emplace(vuk::ContextCreateParameters{
             vkbInstance,
@@ -159,6 +150,8 @@ App::App() {
 
     acceleration_structure = new AccelerationStructure(
             vuk_allocator);
+
+    camera_obj = *(new camera);
 
     std::cout << "Built!" << std::endl;
 }
@@ -253,17 +246,6 @@ void App::setup() {
     glfwSetWindowSizeCallback(window,
                               [](GLFWwindow* window, int width, int height) {
     });
-    {
-        vuk::PipelineBaseCreateInfo pci;
-        //pci.add_glsl(util::read_entire_file("../Shaders/rt.rgen"), "rt.rgen");
-        //pci.add_glsl(util::read_entire_file("../Shaders/rt.rmiss"), "rt.rmiss");
-        //pci.add_glsl(util::read_entire_file("C:/Users/Danny/CLionProjects/Dender/src/Shaders/rt.rchit"), "rt.rchit");
-        pci.add_hit_group(vuk::HitGroup{
-            .type = vuk::HitGroupType::eTriangles,
-            .closest_hit = 2
-        });
-        context->create_named_pipeline("Path tracing", pci);
-    }
 
     // Describe the mesh
     {
@@ -312,11 +294,12 @@ void App::render(vuk::Compiler& compiler) {
         target = vuk::Future{std::move(rg), "example_target_image"};
     }
 
+    //camera_obj.update();
     struct VP {
         glm::mat4 inv_view;
         glm::mat4 inv_proj;
     } vp;
-    vp.inv_view = glm::lookAt(glm::vec3(0, 0, 10), glm::vec3(0), glm::vec3(0, 1, 0));
+    vp.inv_view = glm::lookAt(glm::vec3(0, 0, -50), glm::vec3(0), glm::vec3(0, 1, 0));
     vp.inv_proj = glm::perspective(glm::degrees(90.f), 1.f, 1.f, 100.f);
     vp.inv_proj[1][1] *= -1;
     vp.inv_view = glm::inverse(vp.inv_view);
@@ -410,11 +393,15 @@ void App::LoadSceneFromFile(const std::string& path)
         // Describe the mesh
         VkAccelerationStructureGeometryTrianglesDataKHR triangles{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR };
         triangles.vertexFormat = static_cast<VkFormat>(mesh.positions.format);
-        triangles.vertexData.deviceAddress = (*mesh.positions.buffer->vk_buffer)->device_address;
+        triangles.vertexData.deviceAddress = (*mesh.positions.buffer->vk_buffer)->device_address
+                + mesh.positions.offset_buffer_view
+                + mesh.positions.offset_accessor;
         triangles.vertexStride             = mesh.positions.stride;
         // Describe the index data
-        triangles.indexType = static_cast<VkIndexType>(mesh.indices.format);
-        triangles.indexData.deviceAddress = (*mesh.positions.buffer->vk_buffer)->device_address;
+        triangles.indexType = mesh.indices.format;
+        triangles.indexData.deviceAddress = (*mesh.positions.buffer->vk_buffer)->device_address
+                + mesh.indices.offset_buffer_view
+                + mesh.indices.offset_accessor;
         // Indicate identity transform by setting transformData to null device pointer
         triangles.transformData = {};
         triangles.maxVertex = mesh.positions.count;
@@ -427,10 +414,21 @@ void App::LoadSceneFromFile(const std::string& path)
 
         // Find sizes
         VkAccelerationStructureBuildRangeInfoKHR build_range_info;
-        build_range_info.firstVertex = mesh.positions.offset / mesh.positions.stride;
+        build_range_info.firstVertex = 0;
         build_range_info.primitiveCount = mesh.indices.count / 3;
-        build_range_info.primitiveOffset = mesh.positions.offset;
+        build_range_info.primitiveOffset = 0;
         build_range_info.transformOffset = 0;
+
+        std::cout << "Position offset:" << mesh.positions.offset_buffer_view +
+        mesh.positions.offset_accessor << std::endl;
+        std::cout << "Stride:" << mesh.positions.stride << std::endl;
+        std::cout << "First vertex: " << (static_cast<float>(mesh.positions.offset_buffer_view)
+        + static_cast<float>(mesh.positions.offset_accessor)) /
+        static_cast<float>(mesh.positions.stride) << std::endl;
+        std::cout << "Vertex format:" << static_cast<VkFormat>(mesh.positions.format) << std::endl;
+        std::cout << "Indices offset:" << mesh.indices.offset_buffer_view +
+        mesh.indices.offset_accessor << std::endl;
+        std::cout << "Indices format:" << static_cast<VkIndexType>(mesh.indices.format) << std::endl;
 
         AccelerationStructure::BlasInput blas_input;
         blas_input.as_geometry.emplace_back(as_geometry);
@@ -456,14 +454,12 @@ void App::LoadSceneFromFile(const std::string& path)
             VkAccelerationStructureInstanceKHR ray_instance{};
             glm::vec3 translation = glm::vec3{0.0f, 0.0f, 0.0f};
             glm::mat4 transform = glm::translate(glm::mat4{1.0f}, translation);
-            glm::mat3x4 transform_matrix = glm::mat3x4(transform);
-            VkTransformMatrixKHR vk_transform_matrix;
-            for (int i = 0; i < 3; ++i) {
-                for (int j = 0; j < 4; ++j) {
-                    vk_transform_matrix.matrix[i][j] = transform_matrix[i][j];
-                }
-            }
-            ray_instance.transform = vk_transform_matrix;
+            glm::mat4 transform_row_major = glm::transpose(transform);
+            //std::memcpy(&ray_instance.transform, &transform_row_major, 12 * sizeof(float));
+            ray_instance.transform = {};
+            ray_instance.transform.matrix[0][0] = 1.f;
+            ray_instance.transform.matrix[1][1] = 1.f;
+            ray_instance.transform.matrix[2][2] = 1.f;
 
             ray_instance.instanceCustomIndex = index + this->blas_acceleration_structures.size();
             ray_instance.accelerationStructureReference = this->blas_acceleration_structures[index].buffer->device_address;

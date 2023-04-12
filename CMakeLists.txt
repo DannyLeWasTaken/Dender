@@ -23,7 +23,7 @@ find_package(Vulkan REQUIRED)
 FetchContent_Declare(
         vuk
         GIT_REPOSITORY https://github.com/martty/vuk
-        GIT_TAG        bb9cc83b12179a74a5b6f465a276117d17314ea8
+        GIT_TAG        2d29042af2aafe2189a09e72e0e9ed5b8ae6163d
 )
 set(VUK_USE_DXC OFF CACHE BOOL "" FORCE) # Don't use mid
 set(VUK_FAIL_FAST ON CACHE BOOL "" FORCE)
