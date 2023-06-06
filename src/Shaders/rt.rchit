@@ -34,5 +34,5 @@ void main() {
     const vec3 barycentrics = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
 
     prd = barycentrics;
-    prd = vec3(1,1,1);
+    prd = vec3(1, 1, 1);
 }

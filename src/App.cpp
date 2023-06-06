@@ -2,7 +2,6 @@
 // Created by Danny on 2023-01-13.
 //
 
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "App.hpp"
 #include "GlfwHelper.hpp"
 #include "utils.hpp"
@@ -12,8 +11,8 @@
 #include <vuk/Buffer.hpp>
 #include <vuk/Future.hpp>
 #include "Renderer.hpp"
-//#include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
+#include <glm/vec3.hpp>
 #include <glm/gtx/euler_angles.hpp>
 
 // Initialization of everything
@@ -95,8 +94,8 @@ App::App() {
                                                                    .accelerationStructure = true };
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeature{ .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR,
                                                                      .rayTracingPipeline = true };
-    deviceBuilder = deviceBuilder.
-            add_pNext(&vk12features)
+    deviceBuilder = deviceBuilder
+            .add_pNext(&vk12features)
             .add_pNext(&vk11features)
             .add_pNext(&sync_feat)
             .add_pNext(&accelFeature)
@@ -118,8 +117,20 @@ App::App() {
     compute_queue = vkbDevice.get_queue(vkb::QueueType::compute).value();
     auto computer_queue_family_index = vkbDevice.get_queue_index(vkb::QueueType::compute).value();
 
+    VkPhysicalDeviceAccelerationStructurePropertiesKHR acceleration_structure_properties = {};
+    acceleration_structure_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
+    acceleration_structure_properties.pNext = nullptr;
+
+    VkPhysicalDeviceProperties2 device_properties2 = {};
+    device_properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    device_properties2.pNext = &acceleration_structure_properties;
+
+    // Query the device properties
+    vkGetPhysicalDeviceProperties2(physical_device, &device_properties2);
+
     std::cout << "3" << std::endl;
 
+	// Add function pointers
     vuk::ContextCreateParameters::FunctionPointers fps;
     fps.vkGetInstanceProcAddr = vkbInstance.fp_vkGetInstanceProcAddr;
     fps.vkGetDeviceProcAddr   = vkbInstance.fp_vkGetDeviceProcAddr;
@@ -147,9 +158,11 @@ App::App() {
     vuk_allocator->allocate_semaphores(*present_ready);
     vuk_allocator->allocate_semaphores(*render_complete);
     vuk_futures = std::make_shared<std::vector<vuk::Future>>();
-
-    acceleration_structure = new AccelerationStructure(
-            vuk_allocator);
+	/**
+    acceleration_structure = new SceneAccelerationStructure(
+            *this->vuk_allocator,
+            acceleration_structure_properties);
+	**/
 
     camera_obj = *(new camera);
 
@@ -189,7 +202,17 @@ App::~App() {
     std::cout << "Destroyed successfully" << std::endl;
 }
 
-void App::onResize(GLFWwindow *window, int width, int height) {
+void App::on_resize(GLFWwindow *window, int width, int height) {
+
+    App& runner = *reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
+
+    runner.vuk_allocator->deallocate(std::span{&this->swapchain->swapchain, 1});
+    runner.vuk_allocator->deallocate(this->swapchain->image_views);
+    runner.context->remove_swapchain(this->swapchain);
+    runner.swapchain = this->context->add_swapchain(util::make_swapchain(this->vkbDevice, this->swapchain->swapchain));
+    for (auto& iv: this->swapchain->image_views) {
+        runner.context->set_name(iv.payload, "Swapchain ImageView");
+    }
 
 }
 
@@ -215,13 +238,16 @@ void App::cleanup() {
         }
     }
 
+    /**
     for (auto& as: this->blas_acceleration_structures) {
         as.as.reset();
-        as.buffer.reset();
+        //as.buffer.reset();
     }
     this->tlas_acceleration_structure.as.reset();
     this->tlas_acceleration_structure.buffer.reset();
     this->tlas_acceleration_structure.instances_buffer.reset();
+    this->tlas_acceleration_structure.scratch_buffer.reset();
+    **/
 
     std::cout << "Freed all textures" << std::endl;
     present_ready.reset();
@@ -245,6 +271,15 @@ void App::cleanup() {
 void App::setup() {
     glfwSetWindowSizeCallback(window,
                               [](GLFWwindow* window, int width, int height) {
+        App& runner = *reinterpret_cast<App*>(glfwGetWindowUserPointer(window));
+
+        runner.vuk_allocator->deallocate(std::span{&runner.swapchain->swapchain, 1});
+        runner.vuk_allocator->deallocate(runner.swapchain->image_views);
+        runner.context->remove_swapchain(runner.swapchain);
+        runner.swapchain = runner.context->add_swapchain(util::make_swapchain(runner.vkbDevice, runner.swapchain->swapchain));
+        for (auto& iv: runner.swapchain->image_views) {
+            runner.context->set_name(iv.payload, "Swapchain ImageView");
+        }
     });
 
     // Describe the mesh
@@ -284,23 +319,48 @@ void App::render(vuk::Compiler& compiler) {
     bundle = *vuk::acquire_one(*context, swapchain, (*present_ready)[context->get_frame_count() % 3],
                                (*render_complete)[context->get_frame_count() % 3]);
 
-    vuk::Future target;
-    {
-        std::shared_ptr<vuk::RenderGraph> rg(std::make_shared<vuk::RenderGraph>("Dender"));
-        rg->attach_swapchain("_swp", swapchain);
-        rg->clear_image("_swp",
-                        "example_target_image",
-                        vuk::ClearColor{0.3f, 0.5f, 0.3f, 1.0f});
-        target = vuk::Future{std::move(rg), "example_target_image"};
-    }
+    std::shared_ptr<vuk::RenderGraph> rg(std::make_shared<vuk::RenderGraph>("Dender"));
+    rg->attach_swapchain("_swp", swapchain);
+    rg->clear_image("_swp",
+                    "example_target_image",
+                    vuk::ClearColor{0.3f, 0.5f, 0.3f, 1.0f});
 
-    //camera_obj.update();
+    vuk::Future cleared_image_to_render_into {std::move(rg), "example_target_image"};
+
+    vuk::Future example_result = this->acquire_rendergraph(frame_allocator,
+                                                           std::move(cleared_image_to_render_into));
+
+    std::shared_ptr<vuk::RenderGraph> rendergraph_present (std::make_shared<vuk::RenderGraph>("presenter"));
+    rendergraph_present->attach_in("_src", std::move(example_result));
+    // we tell the rendergraph _src will be used for presetnation after the rendergraph
+    rendergraph_present->release_for_present("_src");
+
+    auto erg = *compiler.link(std::span{&rendergraph_present, 1}, {});
+
+    auto result = *vuk::execute_submit(frame_allocator,
+                                       std::move(erg),
+                                       std::move(bundle));
+    vuk::present_to_one(*context, std::move(result));
+    if (++num_frames == 16)
+    {
+        auto new_time = glfwGetTime();
+        auto delta = new_time - old_time;
+        auto per_frame_time = delta / 16 * 1000;
+        old_time = new_time;
+        num_frames = 0;
+        glfwSetWindowTitle(window, (APP_TITLE + std::string(" [") + std::to_string(per_frame_time) + " ms / " + std::to_string(1000 / per_frame_time) + " FPS]").c_str() );
+    }
+}
+
+vuk::Future App::acquire_rendergraph(vuk::Allocator &frame_allocator, vuk::Future target) {
     struct VP {
         glm::mat4 inv_view;
         glm::mat4 inv_proj;
     } vp;
-    vp.inv_view = glm::lookAt(glm::vec3(0, 0, -50), glm::vec3(0), glm::vec3(0, 1, 0));
-    vp.inv_proj = glm::perspective(glm::degrees(90.f), 1.f, 1.f, 100.f);
+    vp.inv_view = glm::lookAt(glm::vec3(0, 0, 2),
+                              glm::vec3(0,0,0),
+                              glm::vec3(0, 1, 0));
+    vp.inv_proj = glm::perspective(glm::degrees(90.f), 1.f, 1.f, 1000.f);
     vp.inv_proj[1][1] *= -1;
     vp.inv_view = glm::inverse(vp.inv_view);
     vp.inv_proj = glm::inverse(vp.inv_proj);
@@ -313,36 +373,73 @@ void App::render(vuk::Compiler& compiler) {
 
     vuk::RenderGraph raytrace_rg("12");
     raytrace_rg.attach_in("12_rt", std::move(target));
-    raytrace_rg.attach_buffer("tlas", *this->tlas_acceleration_structure.buffer);
+    //raytrace_rg.attach_buffer("tlas", *this->tlas_acceleration_structure.buffer);
 
-    auto tlas = &this->tlas_acceleration_structure.as;
+    // TLAS update pass
+    /**
+    raytrace_rg.add_pass({
+        .resources = {
+                "tlas"_buffer >> vuk::eAccelerationStructureBuildWrite },
+        .execute = [instance_buffer     = *this->tlas_acceleration_structure.instances_buffer,
+                    tlas_scratch_buffer = *this->tlas_acceleration_structure.scratch_buffer,
+                    tlas           = *this->tlas_acceleration_structure.as]
+                (vuk::CommandBuffer& command_buffer) mutable {
+            VkAccelerationStructureGeometryInstancesDataKHR instancesVk{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR };
+            instancesVk.data.deviceAddress = instance_buffer.device_address;
 
+            VkAccelerationStructureGeometryKHR topASGeometry{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
+            topASGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+            topASGeometry.geometry.instances = instancesVk;
+
+            VkAccelerationStructureBuildGeometryInfoKHR tlas_build_info{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
+            tlas_build_info.flags = VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+            tlas_build_info.geometryCount = 1;
+            tlas_build_info.pGeometries = &topASGeometry;
+            tlas_build_info.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR;
+            tlas_build_info.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+
+            tlas_build_info.srcAccelerationStructure = tlas;
+            tlas_build_info.dstAccelerationStructure = tlas;
+            tlas_build_info.scratchData.deviceAddress = tlas_scratch_buffer.device_address;
+
+            VkAccelerationStructureBuildRangeInfoKHR tlas_offset{ 1, 0, 0, 0 };
+            const VkAccelerationStructureBuildRangeInfoKHR* ptlas_offset = &tlas_offset;
+            command_buffer.build_acceleration_structures(1, &tlas_build_info, &ptlas_offset);
+        }});
+    **/
+
+    // We use a eR8G8B8A8Unorm, as the swapchain is in sRGB which does not support storage use
     raytrace_rg.attach_image("12_rt_target",
                              vuk::ImageAttachment{
         .format = vuk::Format::eR8G8B8A8Unorm,
         .sample_count = vuk::SampleCountFlagBits::e1,
         .layer_count = 1
     });
+    // This intermediate image is the same shape as the swapchain image
     raytrace_rg.inference_rule("12_rt_target",
                                vuk::same_shape_as("12_rt"));
+    // Synchronize against the TLAS buffer to run this pass after the TLAS update has completed
     raytrace_rg.add_pass({
-        .resources = { "12_rt_target"_image >> vuk::eRayTracingWrite,
-                       "tlas"_buffer >> vuk::eRayTracingRead },
-        .execute = [uboVP,
-                    tlas = &this->tlas_acceleration_structure.as](vuk::CommandBuffer& command_buffer) {
-        command_buffer.bind_acceleration_structure(0, 0, tlas->get())
-        .bind_image(0, 1, "12_rt_target")
-        .bind_buffer(0, 2, uboVP)
-        .bind_ray_tracing_pipeline("raytracing");
-        // Launch one ray per pixel in the intermediate image
-        auto extent = command_buffer.get_resource_image_attachment("12_rt_target")->extent;
-        command_buffer.trace_rays(extent.extent.width, extent.extent.height, 1);
-    }});
+        .resources = { "12_rt_target"_image >> vuk::eRayTracingWrite},
+                       .execute = [uboVP](vuk::CommandBuffer& command_buffer) {
 
+            command_buffer
+            .bind_image(0, 1, "12_rt_target")
+            .bind_buffer(0, 2, uboVP)
+            .bind_ray_tracing_pipeline("raytracing");
+            /**
+            // Launch one ray per pixel in the intermediate image
+            auto extent = command_buffer.get_resource_image_attachment("12_rt_target")->extent;
+            command_buffer.trace_rays(extent.extent.width, extent.extent.height, 1);
+            **/
+        }});
+    // Perform a blit of the intermediate image onto the swapchain
+    // (this will also do the non-linear encoding for us, although we lost some precision when
+    // we rendered into Unorm)
     raytrace_rg.add_pass({
         .resources = { "12_rt_target+"_image >> vuk::eTransferRead,
                        "12_rt"_image >> vuk::eTransferWrite >> "12_rt_final" },
-        .execute = [](vuk::CommandBuffer& command_buffer) {
+                       .execute = [](vuk::CommandBuffer& command_buffer) {
             vuk::ImageBlit blit;
             blit.srcSubresource.aspectMask = vuk::ImageAspectFlagBits::eColor;
             blit.srcSubresource.baseArrayLayer = 0;
@@ -355,23 +452,7 @@ void App::render(vuk::Compiler& compiler) {
             command_buffer.blit_image("12_rt_target+", "12_rt", blit, vuk::Filter::eNearest);
         }});
 
-    vuk::Future rendergraph_result = vuk::Future {
-        std::make_unique<vuk::RenderGraph>(std::move(raytrace_rg)), "12_rt_final"
-    };
-
-    auto ptr = rendergraph_result.get_render_graph();
-    auto erg = *compiler.link(std::span{&ptr, 1}, {});
-    auto result = *vuk::execute_submit(frame_allocator, std::move(erg), std::move(bundle));
-    vuk::present_to_one(*context, std::move(result));
-    if (++num_frames == 16)
-    {
-        auto new_time = glfwGetTime();
-        auto delta = new_time - old_time;
-        auto per_frame_time = delta / 16 * 1000;
-        old_time = new_time;
-        num_frames = 0;
-        glfwSetWindowTitle(window, (APP_TITLE + std::string(" [") + std::to_string(per_frame_time) + " ms / " + std::to_string(1000 / per_frame_time) + " FPS]").c_str() );
-    }
+    return vuk::Future { std::make_unique<vuk::RenderGraph>(std::move(raytrace_rg)), "12_rt_final" };
 }
 
 void App::LoadSceneFromFile(const std::string& path)
@@ -386,103 +467,4 @@ void App::LoadSceneFromFile(const std::string& path)
 		futures.emplace_back(buffer->future);
 	}
 	this->vuk_futures->insert(this->vuk_futures->end(), futures.begin(), futures.end());
-
-    // Build AS
-    std::vector<AccelerationStructure::BlasInput> blas_inputs;
-    for (auto& mesh: this->scene.meshes) {
-        // Describe the mesh
-        VkAccelerationStructureGeometryTrianglesDataKHR triangles{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR };
-        triangles.vertexFormat = static_cast<VkFormat>(mesh.positions.format);
-        triangles.vertexData.deviceAddress = (*mesh.positions.buffer->vk_buffer)->device_address
-                + mesh.positions.offset_buffer_view
-                + mesh.positions.offset_accessor;
-        triangles.vertexStride             = mesh.positions.stride;
-        // Describe the index data
-        triangles.indexType = mesh.indices.format;
-        triangles.indexData.deviceAddress = (*mesh.positions.buffer->vk_buffer)->device_address
-                + mesh.indices.offset_buffer_view
-                + mesh.indices.offset_accessor;
-        // Indicate identity transform by setting transformData to null device pointer
-        triangles.transformData = {};
-        triangles.maxVertex = mesh.positions.count;
-
-        // Identify the above data as containing opaque triangles
-        VkAccelerationStructureGeometryKHR as_geometry { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
-        as_geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-        as_geometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
-        as_geometry.geometry.triangles = triangles;
-
-        // Find sizes
-        VkAccelerationStructureBuildRangeInfoKHR build_range_info;
-        build_range_info.firstVertex = 0;
-        build_range_info.primitiveCount = mesh.indices.count / 3;
-        build_range_info.primitiveOffset = 0;
-        build_range_info.transformOffset = 0;
-
-        std::cout << "Position offset:" << mesh.positions.offset_buffer_view +
-        mesh.positions.offset_accessor << std::endl;
-        std::cout << "Stride:" << mesh.positions.stride << std::endl;
-        std::cout << "First vertex: " << (static_cast<float>(mesh.positions.offset_buffer_view)
-        + static_cast<float>(mesh.positions.offset_accessor)) /
-        static_cast<float>(mesh.positions.stride) << std::endl;
-        std::cout << "Vertex format:" << static_cast<VkFormat>(mesh.positions.format) << std::endl;
-        std::cout << "Indices offset:" << mesh.indices.offset_buffer_view +
-        mesh.indices.offset_accessor << std::endl;
-        std::cout << "Indices format:" << static_cast<VkIndexType>(mesh.indices.format) << std::endl;
-
-        AccelerationStructure::BlasInput blas_input;
-        blas_input.as_geometry.emplace_back(as_geometry);
-        blas_input.as_build_offset_info.emplace_back(build_range_info);
-
-        blas_inputs.emplace_back(blas_input);
-    }
-    AccelerationStructure::BLASSceneAccelerationStructure blas_rendergraph = this->acceleration_structure->build_blas(
-            blas_inputs,
-            VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
-    );
-    for (auto& as: blas_rendergraph.acceleration_structures) {
-        this->blas_acceleration_structures.emplace_back(std::move(as));
-    }
-
-
-    // Handle Tlas creation
-    std::vector<VkAccelerationStructureInstanceKHR> tlas;
-    {
-        uint64_t index = this->blas_acceleration_structures.size() - blas_inputs.size();
-        for (auto &mesh: this->scene.meshes) {
-            // TLAS CONSTRUCTION
-            VkAccelerationStructureInstanceKHR ray_instance{};
-            glm::vec3 translation = glm::vec3{0.0f, 0.0f, 0.0f};
-            glm::mat4 transform = glm::translate(glm::mat4{1.0f}, translation);
-            glm::mat4 transform_row_major = glm::transpose(transform);
-            //std::memcpy(&ray_instance.transform, &transform_row_major, 12 * sizeof(float));
-            ray_instance.transform = {};
-            ray_instance.transform.matrix[0][0] = 1.f;
-            ray_instance.transform.matrix[1][1] = 1.f;
-            ray_instance.transform.matrix[2][2] = 1.f;
-
-            ray_instance.instanceCustomIndex = index + this->blas_acceleration_structures.size();
-            ray_instance.accelerationStructureReference = this->blas_acceleration_structures[index].buffer->device_address;
-            ray_instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-            ray_instance.mask  = 0xFF;
-            ray_instance.instanceShaderBindingTableRecordOffset = 0;
-            tlas.emplace_back(ray_instance);
-            index++;
-        }
-    }
-
-    AccelerationStructure::TlasSceneAccelerationStructure tlas_rendergraph = this->acceleration_structure->build_tlas(tlas);
-    this->tlas_acceleration_structure = std::move(tlas_rendergraph.acceleration_structure);
-
-    // Enqueue all vuk futures
-    this->vuk_futures->emplace_back(
-            vuk::Future(std::make_shared<vuk::RenderGraph>(std::move(blas_rendergraph.graph)),
-                        "blas_buffer+")
-    );
-
-    this->vuk_futures->emplace_back(
-            vuk::Future(std::make_shared<vuk::RenderGraph>(std::move(tlas_rendergraph.graph)),
-                        "tlas_buffer+")
-    );
-
 }

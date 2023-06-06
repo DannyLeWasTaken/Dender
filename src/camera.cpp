@@ -16,5 +16,5 @@ void camera::update() {
 }
 
 void camera::update_position(glm::vec3& pos) {
-    this->position = position;
+    this->position = pos;
 }

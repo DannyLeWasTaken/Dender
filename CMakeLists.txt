@@ -23,7 +23,7 @@ find_package(Vulkan REQUIRED)
 FetchContent_Declare(
         vuk
         GIT_REPOSITORY https://github.com/martty/vuk
-        GIT_TAG        2d29042af2aafe2189a09e72e0e9ed5b8ae6163d
+        GIT_TAG        0367df81c99c482fc62a7773ecb85d5286d72cb2
 )
 set(VUK_USE_DXC OFF CACHE BOOL "" FORCE) # Don't use mid
 set(VUK_FAIL_FAST ON CACHE BOOL "" FORCE)
@@ -39,7 +39,7 @@ FetchContent_MakeAvailable(vk-bootstrap)
 FetchContent_Declare(
         fastgltf
         GIT_REPOSITORY https://github.com/spnda/fastgltf
-        GIT_TAG        09cb85cae1fbb83c914806f315476c751720dbd0
+        GIT_TAG        v0.4.0
 )
 FetchContent_MakeAvailable(fastgltf)
 
@@ -94,7 +94,7 @@ add_executable(Dender
         src/utils.hpp
         src/App.cpp src/App.hpp
         #src/Assets/Scene.cpp src/Assets/Scene.hpp
-        src/Assets/TinyGltfLoader.cpp src/Assets/TinyGltfLoader.hpp src/Assets/TinyGltfLoader.hpp src/Structs/Assets.h src/Assets/fast_gltf_loader.hpp src/Assets/fast_gltf_loader.cpp src/Structs/Assets.hpp src/AccelerationStructure.hpp src/AccelerationStructure.cpp)
+        src/Assets/TinyGltfLoader.cpp src/Assets/TinyGltfLoader.hpp src/Assets/TinyGltfLoader.hpp src/Structs/Assets.h src/Assets/fast_gltf_loader.hpp src/Assets/fast_gltf_loader.cpp src/Structs/Assets.hpp src/util/manager.hpp src/util/handle.hpp src/util/manager.cpp src/util/result.hpp src/util/id_gen.hpp)
 
 
 

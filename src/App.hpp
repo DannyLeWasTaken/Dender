@@ -20,7 +20,6 @@
 #include "vuk/resources/DeviceFrameResource.hpp"
 #include "./Assets/fast_gltf_loader.hpp"
 #include "./camera.hpp"
-#include "AccelerationStructure.hpp"
 
 class Scene;
 class GltfScene;
@@ -54,18 +53,17 @@ public:
 
     Asset::Scene scene;
     camera camera_obj;
-    AccelerationStructure* acceleration_structure;
-    std::vector<AccelerationStructure::BlasAccelerationStructure> blas_acceleration_structures;
-    AccelerationStructure::TlasAccelerationStructure tlas_acceleration_structure;
 
     // FUNCTIONS
     App();
     ~App();
     void setup();
     void cleanup();
-    void onResize(GLFWwindow* window, int width, int height);
+    void on_resize(GLFWwindow* window, int width, int height);
     void loop();
     void render(vuk::Compiler& command_buffer);
+    vuk::Future acquire_rendergraph(vuk::Allocator& frame_allocator, vuk::Future future);
+
 
     void LoadSceneFromFile(const std::string& path);
 

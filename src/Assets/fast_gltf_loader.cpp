@@ -80,7 +80,7 @@ Asset::Scene fast_gltf_loader::load_file(const std::filesystem::path& path, vuk:
 		for (auto& primitive: mesh.primitives) {
 			auto [asset_mesh, success] = load_primitive(gltf_asset, &scene, primitive);
 			if (success) {
-				scene.meshes.emplace_back(asset_mesh);
+				scene.meshes.emplace_back(std::make_shared<Asset::Mesh>(asset_mesh));
 			} else {
 				std::cout << "Mesh name: " << mesh.name << " has not loaded correctly!" << std::endl;
 			}

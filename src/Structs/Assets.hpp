@@ -45,6 +45,13 @@ namespace Asset {
 		BufferView tangents;
 		std::string name;
 		uint64_t first_index;
+
+        ~Mesh() {
+            this->positions.buffer->vk_buffer.reset();
+            this->indices.buffer->vk_buffer.reset();
+            this->normals.buffer->vk_buffer.reset();
+            this->tangents.buffer->vk_buffer.reset();
+        }
 	};
 	struct Node {
 		std::vector<Mesh*> meshes;
@@ -52,9 +59,39 @@ namespace Asset {
 	};
 	struct Scene {
 		std::vector<Node>     nodes;
-		std::vector<Mesh>     meshes;
+		std::vector<std::shared_ptr<Mesh>>     meshes;
 		std::vector<Buffer*>  buffers;
 		std::vector<Material> materials;
+
+        std::unordered_map<std::string, std::shared_ptr<Mesh>> name_meshes;
+        std::unordered_map<std::shared_ptr<Mesh>, std::string> mesh_names;
+
+        void remove_mesh(std::shared_ptr<Mesh> mesh) {
+            name_meshes.erase(mesh_names[mesh]);
+            mesh_names.erase(mesh);
+            mesh.reset();
+        }
+
+        void remove_mesh(const std::string& name) {
+            auto mesh = name_meshes[name];
+            mesh_names.erase(mesh);
+            name_meshes.erase(name);
+            mesh.reset();
+        }
+
+        std::shared_ptr<Mesh> add_mesh(Mesh mesh) {
+            std::shared_ptr<Mesh> ptr_mesh = std::make_shared<Mesh>(mesh);
+            name_meshes[ptr_mesh->name] = ptr_mesh;
+            mesh_names[ptr_mesh] = ptr_mesh->name;
+            meshes.push_back(ptr_mesh);
+            return ptr_mesh;
+        }
+
+        ~Scene() {
+            for (auto& mesh: this->mesh_names) {
+                this->remove_mesh(mesh.first);
+            }
+        }
 	};
 }
 
