@@ -5,24 +5,20 @@
 #ifndef DENDER_ID_GEN_HPP
 #define DENDER_ID_GEN_HPP
 
+#include <atomic>
 #include <cstdint>
 
-class id_gen {
-
+template<typename T, typename IdType = uint32_t>
+struct id_gen {
+public:
 	/// @brief Get next ID in id generator
 	/// @return id
-	uint64_t next() {
-		this->count++;
-		return count;
-	}
-
-	/// @brief Resets ID gen
-	void reset() {
-		this->count = 0;
+	static IdType next() {
+		return cur++;
 	}
 
 private:
-	uint64_t count = -1;
+	static inline std::atomic<IdType> cur = 0;
 };
 
 #endif//DENDER_ID_GEN_HPP

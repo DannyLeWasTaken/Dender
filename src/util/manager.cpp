@@ -16,7 +16,7 @@ Handle<T> Manager<T>::add(T obj) {
 	Handle<T> new_handle {
 			.count = this->counter,
 			.index = this->storage.size() - 1,
-			.id = this->id_generator.next()
+			.id = this->handles.back().next()
 	};
 	return new_handle;
 }

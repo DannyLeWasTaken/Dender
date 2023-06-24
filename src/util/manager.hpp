@@ -40,7 +40,6 @@ private:
     uint64_t counter;
     std::vector<std::shared_ptr<T>> storage;
     std::vector<Handle<T>> handles;
-	id_gen id_generator;
 
 	/// @brief Validates the given handle to make sure it exists in the manager
 	/// @param handle Handle to validate

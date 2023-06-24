@@ -21,6 +21,10 @@ struct Result {
 			return this->Ok;
 		}
 	}
+
+	T unwrap() {
+		return this->Ok;
+	}
 };
 
 #endif//DENDER_RESULT_HPP

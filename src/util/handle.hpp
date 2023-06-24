@@ -6,56 +6,67 @@
 #define DENDER_HANDLE_HPP
 
 #include <cstdint>
+#include <functional>
+#include "id_gen.hpp"
 
 
 /// @brief Handle struct
 template <typename T>
 struct Handle {
 public:
-	[[nodiscard]] int get_index() const {
-        return this->index;
-    }
+	/**
+	 * @brief Constructs a handle as a null handle
+	**/
+	Handle() = default;
 
-	[[nodiscard]] int get_count() const {
-		return this->count;
-	}
+	/**
+	 * @brief Copies a handle
+	 * @param rhs The handle to copy
+	 */
+	Handle& operator=(Handle const& rhs) = default;
 
-	[[nodiscard]] int get_id() const {
-		return this->id;
-	}
+	/**
+	 * @var static Handle none
+	 * @brief Respesents a null handle
+	 */
+	static Handle none;
 
-	void set_index(const int& in) {
-		this->index = in;
-	}
-
-	void set_count(const int& co) {
-		this->count = co;
-	}
-
-	/// @brief   Determines if given handle has an index and counter over 0
-	/// @returns bool
-	bool is_valid() {
-		return this->index > 0 && this->count > 0;
-	}
-
+	/**
+	 * @brief Comparator for handles.
+	 * @param rhs The handle to compare with
+	 * @return trueif the handle refer to the same id
+	 */
 	bool operator==(const Handle<T>& other) const {
 		return other.index == this->index &&
 				other.count == this->count;
 	}
 
-	bool operator!=(const Handle<T>& other) const {
-		return other.index != this->index || other.count != this->index;
-	}
-
+	/**
+	 * @brief Converts a handle to a boolean
+	 * @return Return true if the handle is not null, false otherwise.
+	 */
 	explicit operator bool() const {
 		return this->is_valid();
 	}
+	/**
+	 * @brief Get the next available handle of this type.
+	 * @return A unique handle of the given type
+	**/
+	static Handle next() {
+		return Handle{id_gen<T, uint64_t>::next()};
+	}
+
+	uint64_t get_id() const {return id;}
 
 private:
-    uint64_t index = -1; // Default to invalid
-    uint64_t count = -1; // Default to invalid
-	uint64_t id = -1; // Default to invalid
+	friend class std::hash<Handle<T>>;
+
+	uint64_t id = none.id;
+	Handle(uint64_t id): id(id) {}
 };
+
+template <typename T>
+Handle<T> Handle<T>::none = Handle<T>(static_cast<uint64_t>(-1));
 
 namespace std {
 	// https://github.com/NotAPenguin0/Andromeda/blob/1e17278c6697293885112d9d6a2b7d0504527917/include/andromeda/util/handle.hpp#L11
@@ -65,7 +76,7 @@ namespace std {
 	struct hash<Handle<T>> {
 		size_t operator()(Handle<T> const& x) const {
 			hash<uint64_t> hash{};
-			return hash( x.get_id() );
+			return hash( x.id );
 		}
 	};
 }
