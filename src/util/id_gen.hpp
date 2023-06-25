@@ -9,7 +9,7 @@
 #include <cstdint>
 
 template<typename T, typename IdType = uint32_t>
-struct id_gen {
+struct IdGen {
 public:
 	/// @brief Get next ID in id generator
 	/// @return id
