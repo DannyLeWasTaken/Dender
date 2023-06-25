@@ -8,14 +8,22 @@
 #include <variant>
 #include <optional>
 #include <stdexcept>
+#include <memory>
 
+/**
+ * @brief A handle struct which vaguely mimics the one found in rust.\n
+ * E defaults to a boolean and true for an error for safety reason.
+ * @tparam T Success type
+ * @tparam E Error type. Default: bool
+ */
 template <typename T, typename E = bool>
 struct Result {
 public:
-	Result(T ok_value) : result(ok_value) {}
-	Result(E err_value) : result(err_value) {}
+	Result() : result(static_cast<E>(true)) {}
 
-	Result(std::enable_if_t<std::is_same<E, bool>::value, E> err_value = true): result(err_value) {}
+	Result(T ok) : result(ok) {}
+	Result(E err) : result(err) {}
+
 
 	std::optional<T> unwrap() {
 		if (std::holds_alternative<T>(result)) {
