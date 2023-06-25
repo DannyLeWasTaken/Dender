@@ -10,7 +10,10 @@
 #include "id_gen.hpp"
 
 
-/// @brief Handle struct
+/**
+ * @brief A handle type that acts as an abstraction for an object
+ * @tparam T Type of the value that the handle holds
+ */
 template <typename T>
 struct Handle {
 public:
