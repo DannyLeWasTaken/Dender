@@ -39,7 +39,7 @@ public:
 
 	/// @brief Removes the handle and object it's linked to from the manager
 	/// @param handle Handle and it's corresponding object to remove
-	void remove(Handle<T>& handle);
+	Result<std::shared_ptr<T>, bool> remove(Handle<T>& handle);
 
 	/// @brief Removes the handle and its corresponding object from the handle, but as well destroys
 	/// @brief the object itself

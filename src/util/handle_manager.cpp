@@ -51,8 +51,11 @@ Result<Handle<T>, bool> HandleManager<T>::get(const Handle<T>& handle) {
 }
 
 template<typename T>
-void HandleManager<T>::remove(Handle<T>& handle) {
+Result<std::shared_ptr<T>, bool> HandleManager<T>::remove(Handle<T>& handle) {
 	if (this->is_valid_handle(handle)) {
+		// Get the object of handle
+		std::shared_ptr<T> obj = this->storage[handle];
+
 		// Remove object of handle
 		this->storage[handle.get_index()] = nullptr;
 
@@ -62,7 +65,10 @@ void HandleManager<T>::remove(Handle<T>& handle) {
 
 		handle.set_count(-1);
 		handle.set_index(-1);
+
+		return Result<std::shared_ptr<T>, bool>(obj);
 	}
+	return Result<std::shared_ptr<T>, bool>(true);
 }
 
 template<typename T>
