@@ -36,6 +36,11 @@ Handle<T> HandleManager<T>::add(std::shared_ptr<T> obj) {
 }
 
 template<typename T>
+const std::vector<Handle<T>> HandleManager<T>::get_handles() {
+	return this->handles;
+}
+
+template<typename T>
 Result<Handle<T>, bool> HandleManager<T>::get(const Handle<T>& handle) {
 	if (this->is_valid_handle(handle)) {
 		return {

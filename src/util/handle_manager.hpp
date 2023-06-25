@@ -37,6 +37,12 @@ public:
 	 */
 	Result<Handle<T>, bool> get(const Handle<T>& handle);
 
+	/**
+	 * @brief Gets all the handles that the handle_manager holds
+	 * @return const std::vector<Handle<T>> handles
+	 */
+	const std::vector<Handle<T>> get_handles();
+
 	/// @brief Removes the handle and object it's linked to from the manager
 	/// @param handle Handle and it's corresponding object to remove
 	Result<std::shared_ptr<T>, bool> remove(Handle<T>& handle);
