@@ -98,7 +98,7 @@ add_executable(Dender
         src/Assets/TinyGltfLoader.hpp src/Structs/Assets.h
         src/Assets/fast_gltf_loader.hpp src/Assets/fast_gltf_loader.cpp
         src/Structs/Assets.hpp
-        src/util/handle_manager.hpp src/util/handle_manager.cpp
+        src/util/handle_manager.hpp
         src/util/handle.hpp
         src/util/result.hpp
         src/util/id_gen.hpp
