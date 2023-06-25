@@ -7,7 +7,6 @@
 
 #include <variant>
 #include <stdexcept>
-#include <iostream>
 
 template <typename T, typename E = bool>
 class Result {
