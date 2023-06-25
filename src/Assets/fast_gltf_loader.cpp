@@ -61,13 +61,13 @@ Asset::Scene fast_gltf_loader::load_file(const std::filesystem::path& path, vuk:
 																			  vuk::DomainFlagBits::eTransferOnGraphics,
 																			  std::span(vector.bytes));
                                allocator.get_context().set_name(vuk_buffer->buffer, "gltf_buffer");
-							   Asset::Buffer* buffer_asset = new Asset::Buffer {
+							   Asset::Buffer buffer_asset = {
 									   .data = vector.bytes,
 									   .vk_buffer = std::move(vuk_buffer),
 									   .future = future
 							   };
 
-							   scene.buffers.emplace_back(buffer_asset);
+							   scene.buffer_handler.add(std::move(buffer_asset));
 						   }
 				   }, buffer.data);
 	}
@@ -78,9 +78,9 @@ Asset::Scene fast_gltf_loader::load_file(const std::filesystem::path& path, vuk:
 	// Load meshes
 	for (auto& mesh: gltf_asset->meshes) {
 		for (auto& primitive: mesh.primitives) {
-			auto [asset_mesh, success] = load_primitive(gltf_asset, &scene, primitive);
-			if (success) {
-				scene.meshes.emplace_back(std::make_shared<Asset::Mesh>(asset_mesh));
+			auto asset_mesh = load_primitive(gltf_asset, &scene, primitive);
+			if (!asset_mesh.is_err()) {
+				scene.add_mesh(asset_mesh.unwrap());
 			} else {
 				std::cout << "Mesh name: " << mesh.name << " has not loaded correctly!" << std::endl;
 			}
@@ -96,18 +96,18 @@ void fast_gltf_loader::load_mesh(std::unique_ptr<fastgltf::Asset> gltf_asset, fa
 	Asset::Mesh out_mesh{};
 
 }
-std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fastgltf::Asset>& gltf_asset,
+Result<Asset::Mesh> fast_gltf_loader::load_primitive(std::unique_ptr<fastgltf::Asset>& gltf_asset,
 									  Asset::Scene* scene,
 									  fastgltf::Primitive& primitive) {
     Asset::Mesh out_mesh{};
 
     if (primitive.attributes.find("POSITION") == primitive.attributes.end()) {
         std::cout << "[WARNINGS]: FAILED TO LOAD MESH PROPERLY" << std::endl;
-        return std::pair<Asset::Mesh, bool>{out_mesh, false};
+        return Result<Asset::Mesh>::Err(true);
     }
     if (!primitive.indicesAccessor.has_value()) {
         std::cout << "[WARNING]: FAILED TO LOAD MESH PROPERLY" << std::endl;
-        return std::pair<Asset::Mesh, bool>{out_mesh, false};
+        return Result<Asset::Mesh>::Err(true);
     }
 
 	auto get_internal_format = [](
@@ -184,7 +184,7 @@ std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fa
 		Asset::BufferView& position_buffer = out_mesh.positions;
 		auto& position_accessor = gltf_asset->accessors[primitive.attributes["POSITION"]];
 		if (!position_accessor.bufferViewIndex.has_value())
-			return std::pair<Asset::Mesh, bool>{out_mesh, false};
+			return Result<Asset::Mesh>::Err(true);
 
 		auto &position_view = gltf_asset->bufferViews[position_accessor.bufferViewIndex.value()];
 		auto offset = position_accessor.byteOffset;
@@ -194,8 +194,10 @@ std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fa
 		position_buffer.offset_buffer_view = position_view.byteOffset;
 		position_buffer.format = get_internal_format(position_accessor.componentType,
 													 position_accessor.type);
-		std::cout << scene->buffers.size() << " | " << position_accessor.bufferViewIndex.value() << std::endl;
-		position_buffer.buffer = scene->buffers[position_accessor.bufferViewIndex.value() - 1];
+		std::cout << scene->buffer_handler.get_handles().size() << " | " << position_accessor.bufferViewIndex.value() << std::endl;
+
+		std::cout << "Searching for buffer of index: " << position_accessor.bufferViewIndex.value() - 1 << std::endl;
+		position_buffer.buffer = scene->buffer_handler.get(position_accessor.bufferViewIndex.value() - 1).unwrap();
 
 		if (position_view.byteStride.has_value()) {
 			position_buffer.stride = position_view.byteStride.value();
@@ -215,7 +217,7 @@ std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fa
 		auto& indices_accessor = gltf_asset->accessors[primitive.indicesAccessor.value()];
 		Asset::IndexView& index_buffer = out_mesh.indices;
 		if (!indices_accessor.bufferViewIndex.has_value())
-			return std::pair<Asset::Mesh, bool>{out_mesh, false};
+			return Result<Asset::Mesh>::Err(true);
 		auto& indices_view = gltf_asset->bufferViews[indices_accessor.bufferViewIndex.value()];
 
 		index_buffer.count       = indices_accessor.count;
@@ -225,7 +227,7 @@ std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fa
 											 indices_accessor.componentType
 											 );
 		index_buffer.format      = get_index_format(indices_accessor.componentType);
-		index_buffer.buffer      = scene->buffers[indices_accessor.bufferViewIndex.value()];
+		index_buffer.buffer		 = scene->buffer_handler.get(indices_accessor.bufferViewIndex.value()).unwrap();
         index_buffer.offset_accessor = indices_accessor.byteOffset;
         index_buffer.offset_buffer_view = indices_view.byteOffset;
         std::cout << "Index buffer ID: " << indices_accessor.bufferViewIndex.value() << std::endl;
@@ -243,5 +245,5 @@ std::pair<Asset::Mesh, bool> fast_gltf_loader::load_primitive(std::unique_ptr<fa
 	{
 		// Materials
 	}
-	return std::pair<Asset::Mesh, bool>{out_mesh, true};
+	return Result<Asset::Mesh>::Ok(out_mesh);
 }

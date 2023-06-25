@@ -24,7 +24,7 @@ public:
 private:
     void load_node(std::unique_ptr<fastgltf::Asset> gltf_asset, fastgltf::Node& node);
     void load_mesh(std::unique_ptr<fastgltf::Asset> gltf_asset, fastgltf::Mesh& mesh);
-	std::pair<Asset::Mesh, bool> load_primitive(std::unique_ptr<fastgltf::Asset>& gltf_asset,
+	Result<Asset::Mesh> load_primitive(std::unique_ptr<fastgltf::Asset>& gltf_asset,
 												Asset::Scene* scene,
 												fastgltf::Primitive& primitive);
 };
