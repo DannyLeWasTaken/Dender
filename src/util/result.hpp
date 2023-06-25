@@ -7,6 +7,7 @@
 
 #include <variant>
 #include <stdexcept>
+#include <iostream>
 
 template <typename T, typename E = bool>
 class Result {
@@ -14,12 +15,12 @@ public:
 	Result(std::in_place_index_t<0>, T ok) : result(std::in_place_index<0>, ok) {}
 	Result(std::in_place_index_t<1>, E err) : result(std::in_place_index<1>, err) {}
 
-	static Result Ok(T okValue) {
-		return Result(std::in_place_index<0>, okValue);
+	static Result Ok(T ok_value) {
+		return Result(std::in_place_index<0>, ok_value);
 	}
 
-	static Result Err(E errValue) {
-		return Result(std::in_place_index<1>, errValue);
+	static Result Err(E err_value) {
+		return Result(std::in_place_index<1>, err_value);
 	}
 
 	T unwrap() {
