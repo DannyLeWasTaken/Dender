@@ -6,39 +6,40 @@
 #define DENDER_RESULT_HPP
 
 #include <variant>
-#include <optional>
 #include <stdexcept>
-#include <memory>
 
-/**
- * @brief A handle struct which vaguely mimics the one found in rust.\n
- * E defaults to a boolean and true for an error for safety reason.
- * @tparam T Success type
- * @tparam E Error type. Default: bool
- */
 template <typename T, typename E = bool>
-struct Result {
+class Result {
 public:
-	Result() : result(static_cast<E>(true)) {}
+	Result(std::in_place_index_t<0>, T ok) : result(std::in_place_index<0>, ok) {}
+	Result(std::in_place_index_t<1>, E err) : result(std::in_place_index<1>, err) {}
 
-	Result(T ok) : result(ok) {}
-	Result(E err) : result(err) {}
+	static Result Ok(T okValue) {
+		return Result(std::in_place_index<0>, okValue);
+	}
 
+	static Result Err(E errValue) {
+		return Result(std::in_place_index<1>, errValue);
+	}
 
-	std::optional<T> unwrap() {
+	T unwrap() {
 		if (std::holds_alternative<T>(result)) {
 			return std::get<T>(result);
 		} else {
-			throw std::runtime_error("Unwrapped called for an error result");
+			throw std::runtime_error("Called unwrap on a Result object in Err state.");
 		}
 	}
 
-	std::optional<T> expect(const std::string& error_message) {
+	T expect(const std::string& error_message) {
 		if (std::holds_alternative<T>(result)) {
 			return std::get<T>(result);
 		} else {
 			throw std::runtime_error(error_message);
 		}
+	}
+
+	bool is_err() {
+		return std::holds_alternative<E>(result);
 	}
 
 private:
