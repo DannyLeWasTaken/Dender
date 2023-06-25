@@ -10,10 +10,12 @@
 #include <vector>
 #include <vuk/Buffer.hpp>
 #include <vuk/Future.hpp>
+#include "../util/handle_manager.hpp"
+
 namespace Asset {
 	struct Buffer {
 		std::vector<uint8_t>                    data;
-		std::optional<vuk::Unique<vuk::Buffer>> vk_buffer;
+		vuk::Unique<vuk::Buffer> 				vk_buffer;
 		vuk::Future				                future;
 	};
 
@@ -23,7 +25,7 @@ namespace Asset {
         uint64_t offset_accessor;
 		uint64_t stride;
 		vuk::Format format;
-		Buffer* buffer;
+		std::shared_ptr<Buffer> buffer;
 	};
 	struct IndexView : BufferView {
 		VkIndexType format;
@@ -47,10 +49,10 @@ namespace Asset {
 		uint64_t first_index;
 
         ~Mesh() {
-            this->positions.buffer->vk_buffer.reset();
-            this->indices.buffer->vk_buffer.reset();
-            this->normals.buffer->vk_buffer.reset();
-            this->tangents.buffer->vk_buffer.reset();
+            //this->positions.buffer->vk_buffer.reset();
+            //this->indices.buffer->vk_buffer.reset();
+            //this->normals.buffer->vk_buffer.reset();
+            //this->tangents.buffer->vk_buffer.reset();
         }
 	};
 	struct Node {
@@ -58,40 +60,41 @@ namespace Asset {
 		Node* parent;
 	};
 	struct Scene {
-		std::vector<Node>     nodes;
-		std::vector<std::shared_ptr<Mesh>>     meshes;
-		std::vector<Buffer*>  buffers;
-		std::vector<Material> materials;
+	public:
+		HandleManager<Mesh> mesh_handler;
+		HandleManager<Node> node_handler;
+		HandleManager<Buffer> buffer_handler;
+		HandleManager<Material> material_handler;
 
-        std::unordered_map<std::string, std::shared_ptr<Mesh>> name_meshes;
-        std::unordered_map<std::shared_ptr<Mesh>, std::string> mesh_names;
-
-        void remove_mesh(std::shared_ptr<Mesh> mesh) {
-            name_meshes.erase(mesh_names[mesh]);
-            mesh_names.erase(mesh);
-            mesh.reset();
+		/**
+		 * @brief Simply removes a mesh from the scene however,
+		 * DOES NOT DESTROY the mesh itself
+		 * @param handle& Handle of the mesh to remove
+		 */
+        std::shared_ptr<Mesh> remove_mesh(Handle<Mesh>& handle) {
+			return this->mesh_handler.remove(handle).unwrap();
         }
 
-        void remove_mesh(const std::string& name) {
-            auto mesh = name_meshes[name];
-            mesh_names.erase(mesh);
-            name_meshes.erase(name);
-            mesh.reset();
-        }
+		/**
+		 * @brief Same functionality as remove_mesh, but destroys the mesh
+		 * @param handle& Mesh to be destroyed
+		 * @return void
+		 */
+		void destroy_mesh(Handle<Mesh>& handle) {
+			this->mesh_handler.destroy(handle);
+		}
 
-        std::shared_ptr<Mesh> add_mesh(Mesh mesh) {
-            std::shared_ptr<Mesh> ptr_mesh = std::make_shared<Mesh>(mesh);
-            name_meshes[ptr_mesh->name] = ptr_mesh;
-            mesh_names[ptr_mesh] = ptr_mesh->name;
-            meshes.push_back(ptr_mesh);
-            return ptr_mesh;
+        Handle<Mesh> add_mesh(const Mesh& mesh) {
+			Handle<Mesh> handle = this->mesh_handler.add(mesh);
+			return handle;
         }
 
         ~Scene() {
-            for (auto& mesh: this->mesh_names) {
-                this->remove_mesh(mesh.first);
-            }
+			this->mesh_handler.destroy_all(); // Destroy all meshes in scene
+
         }
+
+	private:
 	};
 }
 
