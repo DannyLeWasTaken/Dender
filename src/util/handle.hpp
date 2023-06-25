@@ -7,7 +7,6 @@
 
 #include <cstdint>
 #include <functional>
-#include <iostream>
 #include "id_gen.hpp"
 
 
@@ -43,9 +42,6 @@ public:
 	/// @brief   Determines if given handle has an index and counter over -1
 	/// @returns bool
 	bool is_valid() {
-		//return true;
-		//std::cout << "check-index: " << this->index << " | " << (this->index != -1) << std::endl;
-		//std::cout << "check-count: " << this->count << " | " << (this->count != -1) << std::endl;
 		return this->index >= 0 && this->count >= 0;
 	}
 

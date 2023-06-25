@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <vector>
 #include <memory>
-#include <iostream>
 #include "result.hpp"
 #include "id_gen.hpp"
 
@@ -61,19 +60,15 @@ public:
 		if (this->is_valid_handle(handle)) {
 			return Result<std::shared_ptr<T>>::Ok(this->storage[handle.get_index()]);
 		} else {
-			std::cout << "This is not a valid handle D:<" << std::endl;
 			return Result<std::shared_ptr<T>>::Err(true);
 		}
 	};
 
 	Result<std::shared_ptr<T>> get(uint64_t index) {
-		std::cout << "Handle-get: " << index << " | " << this->handles.size() << std::endl;
 		if (index >= this->handles.size()) {
-			std::cout << "Too big!" << std::endl;
 			return Result<std::shared_ptr<T>>::Err(true);
 		}
 		Handle<T> handle = this->handles[index];
-		std::cout << "Calling the real get" << std::endl;
 		return this->get(handle);
 	};
 
@@ -135,11 +130,6 @@ private:
 	/// @brief Validates the given handle to make sure it exists in the manager
 	/// @param handle Handle to validate
 	bool is_valid_handle(Handle<T> handle) {
-		//std::cout << "Index: " << handle.get_index() << " | " << this->storage.size() << std::endl;
-		//std::cout << "Valid: " << handle.is_valid() << std::endl;
-		//std::cout << "Handles: " << this->handles.size() << std::endl;
-		//std::cout << "Count: " << handle.get_count() << " | " << this->handles[handle.get_index()].get_count() << std::endl;
-		//std::cout << "=====" << std::endl;
 		return handle.get_index() < this->storage.size() &&
 			   handle.is_valid() &&
 			   handle.get_count() == this->handles[handle.get_index()].get_count();
