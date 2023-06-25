@@ -73,17 +73,8 @@ Result<std::shared_ptr<T>, bool> HandleManager<T>::remove(Handle<T>& handle) {
 
 template<typename T>
 void HandleManager<T>::destroy(Handle<T>& handle) {
-	if (this->is_valid_handle(handle)) {
-		// Remove object of handle
-		this->storage[handle.get_index()].reset();
-		this->storage[handle.get_index()] = nullptr;
-
-		this->handles[handle.get_index()].set_count(-1);
-		this->handles[handle.get_index()].set_index(-1);
-
-		handle.set_count(-1);
-		handle.set_index(-1);
-	}
+	auto& ptr = this->remove(handle);
+	ptr.unwrap().value().reset(); // Destroy object
 }
 
 template<typename T>
