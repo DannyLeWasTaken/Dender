@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <iostream>
 #include "id_gen.hpp"
 
 
@@ -17,6 +18,8 @@
 template <typename T>
 struct Handle {
 public:
+	Handle(uint64_t index, uint64_t count, uint64_t id) : index(index), count(count), id(id) {}
+
 	int get_index() const {
 		return this->index;
 	}
@@ -29,18 +32,21 @@ public:
 		return this->id;
 	}
 
-	void set_index(const int& in) {
+	void set_index(const int in) {
 		this->index = in;
 	}
 
-	void set_count(const int& co) {
+	void set_count(const int co) {
 		this->count = co;
 	}
 
-	/// @brief   Determines if given handle has an index and counter over 0
+	/// @brief   Determines if given handle has an index and counter over -1
 	/// @returns bool
 	bool is_valid() {
-		return this->index > 0 && this->count > 0;
+		//return true;
+		//std::cout << "check-index: " << this->index << " | " << (this->index != -1) << std::endl;
+		//std::cout << "check-count: " << this->count << " | " << (this->count != -1) << std::endl;
+		return this->index >= 0 && this->count >= 0;
 	}
 
 	/**
@@ -48,6 +54,11 @@ public:
 	 * @param rhs The handle to copy
 	 */
 	Handle(Handle const& rhs) = default;
+
+	/**
+	 * @brief Default empty constructor
+	 */
+	 Handle() = default;
 
 	/**
 	 * @brief Copies a handle
@@ -72,7 +83,7 @@ public:
 private:
 	friend class std::hash<Handle<T>>;
 	
-	uint64_t index = -1; // Default to invalid
+	uint64_t index = -1; // Default to invalid. Index location
 	uint64_t count = -1; // Default to invalid
 	uint64_t id = -1; // Default to invalid
 };
