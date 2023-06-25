@@ -16,6 +16,12 @@
 template <typename T>
 class HandleManager {
 public:
+	/**
+	 * @brief When HandleManager is destroyed, all handles by default are
+	 * removed using remove() and not destroy()
+	 */
+	~HandleManager();
+
 	/// @brief Hand over object to the manager to manage
 	/// @param obj Object to hand over via std::move()
 	/// @returns Handle of the handed over object
@@ -39,6 +45,13 @@ public:
 	/// @brief the object itself
 	/// @param handle Handle and corresponding object to destroy
 	void destroy(Handle<T>& handle);
+
+	/**
+	 * @brief Destroys all handles in HandleManager using destroy()\n
+	 * Use this if you're planning on destroying all memory associated with handle
+	 * manager
+	 */
+	void destroy_all();
 
 private:
 	uint64_t counter;

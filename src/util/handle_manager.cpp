@@ -79,3 +79,17 @@ void HandleManager<T>::destroy(Handle<T>& handle) {
 		handle.set_index(-1);
 	}
 }
+
+template<typename T>
+HandleManager<T>::~HandleManager() {
+	for (auto& handle: this->handles) {
+		this->remove(handle);
+	}
+}
+
+template<typename T>
+void HandleManager<T>::destroy_all() {
+	for (auto& handle: this->handles) {
+		this->destroy(handle);
+	}
+}
