@@ -2,8 +2,8 @@
 // Created by Danny on 2023-04-30.
 //
 
-#ifndef DENDER_MANAGER_HPP
-#define DENDER_MANAGER_HPP
+#ifndef DENDER_HANDLE_MANAGER_HPP
+#define DENDER_HANDLE_MANAGER_HPP
 
 #include "handle.hpp"
 #include <cstdint>
@@ -14,8 +14,8 @@
 
 ///@brief Manager for handlers
 template <typename T>
-class Manager {
-
+class HandleManager {
+public:
 	/// @brief Hand over object to the manager to manage
 	/// @param obj Object to hand over via std::move()
 	/// @returns Handle of the handed over object
@@ -24,8 +24,12 @@ class Manager {
 	/// @brief Add object through a shared ptr to be handled by manager
 	Handle<T> add(std::shared_ptr<T> obj);
 
-
-	Result<Handle<T>, bool> get(Handle<T> handle);
+	/**
+	 * @brief Get the original type of from the handle
+	 * @param handle
+	 * @return
+	 */
+	Result<Handle<T>, bool> get(const Handle<T>& handle);
 
 	/// @brief Removes the handle and object it's linked to from the manager
 	/// @param handle Handle and it's corresponding object to remove
@@ -37,9 +41,10 @@ class Manager {
 	void destroy(Handle<T>& handle);
 
 private:
-    uint64_t counter;
-    std::vector<std::shared_ptr<T>> storage;
-    std::vector<Handle<T>> handles;
+	uint64_t counter;
+	std::vector<std::shared_ptr<T>> storage;
+	std::vector<Handle<T>> handles;
+	IdGen<T, uint64_t> id_generator;
 
 	/// @brief Validates the given handle to make sure it exists in the manager
 	/// @param handle Handle to validate
@@ -51,4 +56,4 @@ private:
 };
 
 
-#endif //DENDER_MANAGER_HPP
+#endif//DENDER_HANDLE_MANAGER_HPP
