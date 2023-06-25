@@ -39,6 +39,6 @@ std::vector<BLASEntry> get_blas_entires(vuk::Allocator& allocator,
 	entries.reserve(meshes.size());
 
 	for (Handle<Asset::Mesh> handle: meshes) {
-		Asset::Mesh const& mesh;
+		//Asset::Mesh const& mesh;
 	}
 }

@@ -93,11 +93,11 @@ add_executable(Dender
         src/GlfwHelper.hpp
         src/utils.hpp
         src/App.cpp src/App.hpp
-        #src/Assets/Scene.cpp src/Assets/Scene.hpp
-        src/Assets/TinyGltfLoader.cpp src/Assets/TinyGltfLoader.hpp
-        src/Assets/TinyGltfLoader.hpp src/Structs/Assets.h
-        src/Assets/fast_gltf_loader.hpp src/Assets/fast_gltf_loader.cpp
-        src/Structs/Assets.hpp
+        #src/assets/Scene.cpp src/assets/Scene.hpp
+        src/assets/TinyGltfLoader.cpp src/assets/TinyGltfLoader.hpp
+        src/assets/TinyGltfLoader.hpp src/structs/Assets.h
+        src/assets/fast_gltf_loader.hpp src/assets/fast_gltf_loader.cpp
+        src/structs/Assets.hpp
         src/util/handle_manager.hpp
         src/util/handle.hpp
         src/util/result.hpp

@@ -159,7 +159,7 @@ App::App() {
     vuk_allocator->allocate_semaphores(*render_complete);
     vuk_futures = std::make_shared<std::vector<vuk::Future>>();
 	/**
-    acceleration_structure = new SceneAccelerationStructure(
+    scene_acceleration_structure = new SceneAccelerationStructure(
             *this->vuk_allocator,
             acceleration_structure_properties);
 	**/
@@ -232,11 +232,14 @@ void App::cleanup() {
         }
     }
     **/
+    /**
+     * TODO: implement proper cleanup
     for (auto& buffer: this->scene.buffers) {
         if (buffer && buffer->vk_buffer) {
             buffer->vk_buffer.reset();
         }
     }
+    **/
 
     /**
     for (auto& as: this->blas_acceleration_structures) {
@@ -285,9 +288,9 @@ void App::setup() {
     // Describe the mesh
     {
         vuk::PipelineBaseCreateInfo pci;
-        pci.add_glsl(util::read_entire_file( "C:/Users/Danny/CLionProjects/Dender/src/Shaders/rt.rgen"),  "rt.rgen");
-        pci.add_glsl(util::read_entire_file( "C:/Users/Danny/CLionProjects/Dender/src/Shaders/rt.rmiss"), "rt.rmiss");
-        pci.add_glsl(util::read_entire_file( "C:/Users/Danny/CLionProjects/Dender/src/Shaders/rt.rchit"), "rt.rchit");
+        pci.add_glsl(util::read_entire_file( "C:/Users/Danny/CLionProjects/Dender/src/shaders/rt.rgen"),  "rt.rgen");
+        pci.add_glsl(util::read_entire_file( "C:/Users/Danny/CLionProjects/Dender/src/shaders/rt.rmiss"), "rt.rmiss");
+        pci.add_glsl(util::read_entire_file( "C:/Users/Danny/CLionProjects/Dender/src/shaders/rt.rchit"), "rt.rchit");
         // new for RT: a hit group is a collection of shaders identified by their index in the PipelineBaseCreateInfo
         // 2 => rt.rchit
         pci.add_hit_group(vuk::HitGroup{ .type = vuk::HitGroupType::eTriangles, .closest_hit = 2 });
@@ -463,8 +466,10 @@ void App::LoadSceneFromFile(const std::string& path)
     this->scene = loaded_scene;
 
 	std::vector<vuk::Future> futures;
-	for (auto& buffer: this->scene.buffers) {
-		futures.emplace_back(buffer->future);
+	futures.reserve(this->scene.buffer_handler.get_handles().size());
+	for (Handle<Asset::Buffer> buffer: this->scene.buffer_handler.get_handles()) {
+		if (buffer.is_valid())
+			futures.emplace_back(this->scene.buffer_handler.get(buffer).unwrap()->future);
 	}
 	this->vuk_futures->insert(this->vuk_futures->end(), futures.begin(), futures.end());
 }
