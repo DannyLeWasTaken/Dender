@@ -64,7 +64,7 @@ public:
 		}
 	};
 
-	Result<std::shared_ptr<T>> get(uint64_t index) {
+	Result<std::shared_ptr<T>> get(const uint64_t index) {
 		if (index >= this->handles.size()) {
 			return Result<std::shared_ptr<T>>::Err(true);
 		}
@@ -79,6 +79,18 @@ public:
 	const std::vector<Handle<T>> get_handles() {
 		return this->handles;
 	};
+
+	/**
+	 * @brief Get all valid handles
+	 * @return vector
+	 */
+	std::vector<Handle<T>> get_valid_handles() const {
+		std::vector<Handle<T>> filtered;
+		std::copy_if(this->handles.begin(), this->handles.end(), std::back_inserter(filtered),
+					 [this](const Handle<T>& obj) {
+						 return this->is_valid_handle(obj);
+					 });
+	}
 
 	/// @brief Removes the handle and object it's linked to from the manager
 	/// @param handle Handle and it's corresponding object to remove
@@ -129,7 +141,7 @@ private:
 
 	/// @brief Validates the given handle to make sure it exists in the manager
 	/// @param handle Handle to validate
-	bool is_valid_handle(Handle<T> handle) {
+	bool is_valid_handle(Handle<T> handle) const {
 		return handle.get_index() < this->storage.size() &&
 			   handle.is_valid() &&
 			   handle.get_count() == this->handles[handle.get_index()].get_count();
